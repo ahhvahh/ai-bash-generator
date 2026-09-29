@@ -1,4 +1,4 @@
-# MCPs do AI Bash Generator
+# MCPs do ai-bash-gen
 
 Este documento define os servidores MCP (Model Context Protocol) previstos para o projeto e as regras de integração com os agentes.
 
@@ -138,7 +138,7 @@ Exemplo para um script reutilizável:
   "description": "Rotaciona arquivos antigos de backup.",
   "invocation": {
     "kind": "local-script",
-    "address": "/usr/local/lib/llama-agentd/scripts/rotate-backups.sh",
+    "address": "/usr/local/lib/ai-bash-gen/scripts/rotate-backups.sh",
     "arguments_schema": {}
   }
 }
@@ -149,7 +149,7 @@ Exemplo para um script reutilizável:
 Banco inicial:
 
 ```text
-/var/lib/llama-agentd/catalog/capabilities.db
+/var/lib/ai-bash-gen/catalog/capabilities.db
 ```
 
 Registro conceitual:
@@ -199,7 +199,7 @@ Uma capacidade é considerada utilizada somente quando:
 Banco de telemetria:
 
 ```text
-/var/lib/llama-agentd/state/telemetry.db
+/var/lib/ai-bash-gen/state/telemetry.db
 ```
 
 Evento conceitual:
@@ -254,14 +254,14 @@ Credenciais e tokens não devem ser armazenados nos arquivos YAML dos agentes.
 Diretório sugerido:
 
 ```text
-/var/lib/llama-agentd/secrets/google-mail/
+/var/lib/ai-bash-gen/secrets/google-mail/
 ```
 
 Permissões sugeridas:
 
 ```text
-owner: llama-agentd
-group: llama-agentd
+owner: ai-bash-gen
+group: ai-bash-gen
 mode: 0700
 ```
 
@@ -367,8 +367,8 @@ A proposta inicial é implementar os servidores MCP no próprio binário.
 Exemplos:
 
 ```bash
-llama-agentd mcp capability-catalog
-llama-agentd mcp google-mail
+ai-bash-gen mcp capability-catalog
+ai-bash-gen mcp google-mail
 ```
 
 O `capability-catalog` poderá operar totalmente local e sem rede.
@@ -384,7 +384,7 @@ A implementação deve preferir separar o processo que acessa Google, com polít
 Arquivo sugerido:
 
 ```text
-/etc/llama-agentd/mcp/servers.yaml
+/etc/ai-bash-gen/mcp/servers.yaml
 ```
 
 Exemplo:
@@ -397,22 +397,22 @@ servers:
   capability-catalog:
     enabled: true
     transport: stdio
-    command: /usr/local/bin/llama-agentd
+    command: /usr/local/bin/ai-bash-gen
     args:
       - mcp
       - capability-catalog
       - --config
-      - /etc/llama-agentd/config.yaml
+      - /etc/ai-bash-gen/config.yaml
 
   google-mail:
     enabled: false
     transport: stdio
-    command: /usr/local/bin/llama-agentd
+    command: /usr/local/bin/ai-bash-gen
     args:
       - mcp
       - google-mail
       - --config
-      - /etc/llama-agentd/config.yaml
+      - /etc/ai-bash-gen/config.yaml
 ```
 
 O arquivo deve ser validado antes do uso.
