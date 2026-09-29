@@ -1,6 +1,6 @@
 # Agentes
 
-Este documento define como agentes são criados, configurados, validados e executados pelo `llama-agentd`.
+Este documento define como agentes são criados, configurados, validados e executados pelo `ai-bash-gen`.
 
 ## Objetivo
 
@@ -29,59 +29,59 @@ A criação e alteração de agentes devem ser feitas preferencialmente pela pr�
 Modo interativo:
 
 ```bash
-llama-agentd agent create
+ai-bash-gen agent create
 ```
 
 Modo não interativo:
 
 ```bash
-llama-agentd agent create \
+ai-bash-gen agent create \
   --id bash-generator \
   --name "Gerador de Scripts Bash" \
   --model qwen2.5-coder-1.5b \
-  --model-file /var/lib/llama-agentd/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
+  --model-file /var/lib/ai-bash-gen/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
 ```
 
 ### Listar agentes
 
 ```bash
-llama-agentd agent list
+ai-bash-gen agent list
 ```
 
 ### Exibir agente
 
 ```bash
-llama-agentd agent show bash-generator
+ai-bash-gen agent show bash-generator
 ```
 
 ### Validar agente
 
 ```bash
-llama-agentd agent validate bash-generator
+ai-bash-gen agent validate bash-generator
 ```
 
 ### Editar agente
 
 ```bash
-llama-agentd agent edit bash-generator
+ai-bash-gen agent edit bash-generator
 ```
 
 ### Desabilitar
 
 ```bash
-llama-agentd agent disable bash-generator
+ai-bash-gen agent disable bash-generator
 ```
 
 ### Habilitar
 
 ```bash
-llama-agentd agent enable bash-generator
+ai-bash-gen agent enable bash-generator
 ```
 
 ### Remover
 
 ```bash
-llama-agentd agent remove bash-generator
+ai-bash-gen agent remove bash-generator
 ```
 
 A remoção deve exigir confirmação explícita e criar backup da configuração.
@@ -93,7 +93,7 @@ A remoção deve exigir confirmação explícita e criar backup da configuraçã
 Ao executar:
 
 ```bash
-llama-agentd agent create
+ai-bash-gen agent create
 ```
 
 a aplicação deve solicitar:
@@ -138,7 +138,7 @@ Antes de gravar:
 Diretório padrão:
 
 ```text
-/etc/llama-agentd/agents/
+/etc/ai-bash-gen/agents/
 ```
 
 Cada agente será armazenado em um arquivo YAML.
@@ -146,7 +146,7 @@ Cada agente será armazenado em um arquivo YAML.
 Exemplo:
 
 ```text
-/etc/llama-agentd/agents/bash-generator.yaml
+/etc/ai-bash-gen/agents/bash-generator.yaml
 ```
 
 Arquivos devem possuir permissões que impeçam alteração por usuários não autorizados.
@@ -154,7 +154,7 @@ Arquivos devem possuir permissões que impeçam alteração por usuários não a
 Sugestão:
 
 ```text
-root:llama-agentd
+root:ai-bash-gen
 0640
 ```
 
@@ -180,7 +180,7 @@ enabled: true
 
 model:
   name: qwen2.5-coder-1.5b
-  file: /var/lib/llama-agentd/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
+  file: /var/lib/ai-bash-gen/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
 
 generation:
   temperature: 0.1
@@ -233,7 +233,256 @@ prompt: |
 
 ---
 
-## 5. Agente inicial: request-organizer
+## 5. Configuração do modelo GGUF e perfil de hardware
+
+O `ai-bash-gen` deverá aceitar arquivos de modelo no formato GGUF e traduzir a configuração do agente para argumentos suportados pelo `llama-server`.
+
+O arquivo deve existir localmente, ser legível pelo usuário de serviço e permanecer fora de diretórios graváveis por clientes.
+
+Diretório recomendado:
+
+```text
+/var/lib/ai-bash-gen/models/
+```
+
+Exemplo de modelo:
+
+```text
+/var/lib/ai-bash-gen/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
+```
+
+### Exemplo completo de configuração GGUF
+
+```yaml
+model:
+  name: qwen2.5-coder-1.5b
+  format: gguf
+  file: /var/lib/ai-bash-gen/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
+
+  # Opcional. Se informado, deve ser validado antes de carregar o modelo.
+  sha256: ""
+
+  llama:
+    profile: cpu
+
+    context_size: 4096
+
+    threads: 2
+    threads_batch: 2
+
+    device: none
+    gpu_layers: 0
+
+    batch_size: 512
+    ubatch_size: 128
+
+    flash_attention: auto
+```
+
+Mapeamento esperado para `llama-server`:
+
+```text
+model.file            -> --model
+context_size          -> --ctx-size
+threads               -> --threads
+threads_batch         -> --threads-batch
+device                -> --device
+gpu_layers            -> --n-gpu-layers
+batch_size            -> --batch-size
+ubatch_size           -> --ubatch-size
+flash_attention       -> --flash-attn
+```
+
+O programa não deve permitir que parâmetros genéricos ou `extra_args` substituam valores de segurança como `--host`, MCPs autorizados ou exposição de rede.
+
+### Perfil padrão: CPU
+
+Este deve ser o perfil inicial recomendado para a máquina de referência do projeto, com 2 núcleos e 8 GB de RAM:
+
+```yaml
+model:
+  name: qwen2.5-coder-1.5b
+  format: gguf
+  file: /var/lib/ai-bash-gen/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
+
+  llama:
+    profile: cpu
+
+    context_size: 4096
+
+    threads: 2
+    threads_batch: 2
+
+    device: none
+    gpu_layers: 0
+
+    batch_size: 512
+    ubatch_size: 128
+
+    flash_attention: auto
+```
+
+Com esse perfil, o comando equivalente deve conter aproximadamente:
+
+```text
+--model <arquivo.gguf>
+--ctx-size 4096
+--threads 2
+--threads-batch 2
+--device none
+--n-gpu-layers 0
+--batch-size 512
+--ubatch-size 128
+--flash-attn auto
+```
+
+O perfil CPU deve ser usado quando:
+
+- nenhuma GPU compatível estiver disponível;
+- o binário do `llama.cpp` não possuir backend GPU;
+- o administrador selecionar explicitamente CPU;
+- a GPU não tiver memória suficiente para offload seguro.
+
+### Perfil padrão: GPU
+
+Para uma única GPU compatível:
+
+```yaml
+model:
+  name: qwen2.5-coder-1.5b
+  format: gguf
+  file: /var/lib/ai-bash-gen/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
+
+  llama:
+    profile: gpu
+
+    context_size: 4096
+
+    threads: 2
+    threads_batch: 2
+
+    # "default" é um valor do ai-bash-gen.
+    # Ele significa não forçar --device e utilizar o dispositivo
+    # padrão detectado pelo llama.cpp.
+    device: default
+
+    gpu_layers: auto
+
+    fit: true
+    fit_target_mib: 1024
+
+    main_gpu: 0
+    split_mode: none
+
+    flash_attention: auto
+```
+
+Mapeamento adicional:
+
+```text
+gpu_layers            -> --n-gpu-layers
+fit: true             -> --fit on
+fit_target_mib        -> --fit-target
+main_gpu              -> --main-gpu
+split_mode            -> --split-mode
+```
+
+Para o perfil GPU, o comando equivalente deve conter aproximadamente:
+
+```text
+--model <arquivo.gguf>
+--ctx-size 4096
+--threads 2
+--threads-batch 2
+--n-gpu-layers auto
+--fit on
+--fit-target 1024
+--main-gpu 0
+--split-mode none
+--flash-attn auto
+```
+
+Quando `device: default` for utilizado, o `ai-bash-gen` não deve adicionar `--device`; o `llama.cpp` selecionará o dispositivo padrão disponível.
+
+### Detecção de GPU
+
+Durante `--configure`, `agent create` e `agent validate`, a aplicação deverá executar de forma controlada:
+
+```bash
+llama-server --list-devices
+```
+
+e interpretar os dispositivos retornados.
+
+O assistente deverá apresentar algo semelhante a:
+
+```text
+Dispositivos de inferência encontrados:
+
+[1] CPU
+[2] CUDA0 - NVIDIA ...
+[3] Vulkan0 - ...
+
+Perfil sugerido: GPU
+```
+
+A presença de uma GPU no sistema não é suficiente. O binário do `llama.cpp` precisa ter sido compilado com um backend compatível com esse dispositivo.
+
+Se nenhum dispositivo GPU utilizável for encontrado, selecionar automaticamente o perfil CPU.
+
+### Perfil automático
+
+Também deverá ser permitido:
+
+```yaml
+llama:
+  profile: auto
+```
+
+Nesse modo:
+
+1. executar a detecção de dispositivos;
+2. preferir GPU quando houver backend compatível;
+3. utilizar `gpu_layers: auto`;
+4. manter `fit: true`;
+5. utilizar CPU caso a GPU não esteja disponível;
+6. registrar no journald qual perfil efetivo foi selecionado.
+
+O perfil efetivo deverá aparecer em comandos de diagnóstico:
+
+```bash
+ai-bash-gen agent show bash-generator
+```
+
+Exemplo:
+
+```text
+Configured profile: auto
+Effective profile:  gpu
+Device:             CUDA0
+GPU layers:         auto
+Context:            4096
+Threads:            2
+```
+
+### Validação do GGUF
+
+Antes de ativar um agente, verificar:
+
+- arquivo existente;
+- arquivo regular;
+- extensão `.gguf`;
+- leitura pelo usuário `ai-bash-gen`;
+- tamanho maior que zero;
+- caminho dentro de um diretório de modelos autorizado;
+- SHA-256, quando configurado;
+- carregamento reconhecido pelo `llama.cpp`.
+
+O `ai-bash-gen` não deve baixar modelos automaticamente durante a execução normal do serviço.
+
+---
+
+## 6. Agente inicial: request-organizer
 
 ID:
 
@@ -264,7 +513,7 @@ enabled: true
 
 model:
   name: qwen2.5-1.5b-instruct
-  file: /var/lib/llama-agentd/models/qwen2.5-1.5b-instruct-q4_k_m.gguf
+  file: /var/lib/ai-bash-gen/models/qwen2.5-1.5b-instruct-q4_k_m.gguf
 
 generation:
   temperature: 0.1
@@ -297,7 +546,7 @@ prompt: |
 
 ---
 
-## 6. Agente inicial: bash-generator
+## 7. Agente inicial: bash-generator
 
 ID:
 
@@ -344,7 +593,7 @@ gerar ScriptArtifact
 
 ---
 
-## 7. Política de consulta MCP
+## 8. Política de consulta MCP
 
 O agente não deve chamar tools sem motivo.
 
@@ -373,7 +622,7 @@ Nunca utilizar Gmail para enriquecer genericamente uma resposta.
 
 ---
 
-## 8. ScriptArtifact
+## 9. ScriptArtifact
 
 Formato conceitual:
 
@@ -404,7 +653,7 @@ O campo `sources_used` permite auditoria sem copiar conteúdo sensível para log
 
 ---
 
-## 9. Segurança de MCP por agente
+## 10. Segurança de MCP por agente
 
 O agente somente poderá consultar MCPs declarados em:
 
@@ -429,11 +678,11 @@ request-organizer
        nenhum
 ```
 
-A autorização real é feita pelo `llama-agentd`, não pelo prompt.
+A autorização real é feita pelo `ai-bash-gen`, não pelo prompt.
 
 ---
 
-## 10. Limites
+## 11. Limites
 
 Cada agente deve possuir limites explícitos:
 
@@ -458,7 +707,7 @@ efetivo = 8
 
 ---
 
-## 11. Validação
+## 12. Validação
 
 Antes de disponibilizar um agente, validar:
 
@@ -491,7 +740,7 @@ log-analyzer
 
 ---
 
-## 12. Gravação atômica
+## 13. Gravação atômica
 
 Ao criar ou alterar um agente:
 
@@ -514,16 +763,16 @@ chmod
 rename atômico
 ```
 
-Não deixar arquivo parcial em `/etc/llama-agentd/agents/`.
+Não deixar arquivo parcial em `/etc/ai-bash-gen/agents/`.
 
 ---
 
-## 13. Reload
+## 14. Reload
 
 Após criar ou alterar agente:
 
 ```bash
-llama-agentd agent create
+ai-bash-gen agent create
 ```
 
 a aplicação poderá:
@@ -536,7 +785,7 @@ Se o reload falhar, a configuração ativa anterior deve continuar válida.
 
 ---
 
-## 14. Pipeline padrão
+## 15. Pipeline padrão
 
 Configuração conceitual:
 
@@ -584,7 +833,7 @@ script Bash
 
 ---
 
-## 15. Criação futura de agentes especializados
+## 16. Criação futura de agentes especializados
 
 A mesma estrutura permitirá agentes específicos, por exemplo:
 
