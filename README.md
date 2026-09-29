@@ -68,6 +68,8 @@ Um agente contém, no mínimo:
 
 A documentação detalhada está em [docs/AGENTS.md](docs/AGENTS.md).
 
+O fluxo de normalização da requisição está em [docs/REQUEST_FLOW.md](docs/REQUEST_FLOW.md).
+
 ### MCP
 
 Os servidores MCP fornecem capacidades consultivas aos agentes.
