@@ -1,6 +1,6 @@
-# AI Bash Generator
+# ai-bash-gen
 
-Projeto para geração local de scripts Bash utilizando agentes baseados em LLM, `llama.cpp`, MCP (Model Context Protocol), Unix Domain Sockets e Protocol Buffers.
+Aplicação e serviço para geração local de scripts Bash utilizando agentes baseados em LLM, `llama.cpp`, MCP (Model Context Protocol), Unix Domain Sockets e Protocol Buffers.
 
 O objetivo é transformar uma solicitação em linguagem natural em um script Bash estruturado, reutilizando funções, aplicações e informações disponibilizadas por servidores MCP controlados pelo próprio ambiente.
 
@@ -12,7 +12,7 @@ O projeto foi desenhado para:
 - funcionar em hardware limitado, inicialmente com 2 núcleos de CPU e 8 GB de RAM;
 - utilizar `llama.cpp` como motor de inferência;
 - manter o `llama-server` isolado de TCP/IP e acessível somente pela aplicação;
-- expor somente Unix Domain Sockets controlados por `llama-agentd`;
+- expor somente Unix Domain Sockets controlados por `ai-bash-gen`;
 - utilizar Protocol Buffers como protocolo entre clientes e o daemon;
 - permitir criação de agentes por configuração;
 - permitir que agentes consultem servidores MCP autorizados;
@@ -21,7 +21,7 @@ O projeto foi desenhado para:
 
 ## Componentes
 
-### `llama-agentd`
+### `ai-bash-gen`
 
 Daemon principal escrito em Go.
 
@@ -42,12 +42,12 @@ Responsabilidades:
 
 Motor de inferência fornecido pelo `llama.cpp`.
 
-Será executado como processo gerenciado pelo `llama-agentd`, utilizando exclusivamente um Unix Domain Socket privado.
+Será executado como processo gerenciado pelo `ai-bash-gen`, utilizando exclusivamente um Unix Domain Socket privado.
 
 Exemplo:
 
 ```text
-/run/llama-agentd/internal/llama.sock
+/run/ai-bash-gen/internal/llama.sock
 ```
 
 Nenhuma porta TCP será exposta.
@@ -86,10 +86,10 @@ Cliente
    |
    | Protobuf
    v
-/run/llama-agentd/routes/*.sock
+/run/ai-bash-gen/routes/*.sock
    |
    v
-llama-agentd
+ai-bash-gen
    |
    +-- Router
    +-- Agent Manager
@@ -100,7 +100,7 @@ llama-agentd
    |
    | HTTP sobre Unix Socket
    v
-/run/llama-agentd/internal/llama.sock
+/run/ai-bash-gen/internal/llama.sock
    |
    v
 llama-server
@@ -160,18 +160,18 @@ Funções muito utilizadas ou de alta complexidade poderão gerar uma iniciativa
 ## Estrutura de diretórios planejada
 
 ```text
-/etc/llama-agentd/
+/etc/ai-bash-gen/
 ├── config.yaml
 ├── agents/
 ├── schemas/
 └── mcp/
 
-/var/lib/llama-agentd/
+/var/lib/ai-bash-gen/
 ├── models/
 ├── catalog/
 └── state/
 
-/run/llama-agentd/
+/run/ai-bash-gen/
 ├── routes/
 └── internal/
     └── llama.sock
@@ -182,7 +182,7 @@ Funções muito utilizadas ou de alta complexidade poderão gerar uma iniciativa
 O executável deverá possuir um assistente interativo:
 
 ```bash
-llama-agentd --configure
+ai-bash-gen --configure
 ```
 
 O assistente será responsável por sugerir caminhos compatíveis com Debian, criar o usuário de serviço, configurar permissões, copiar os binários e instalar a unidade systemd.
@@ -190,14 +190,14 @@ O assistente será responsável por sugerir caminhos compatíveis com Debian, cr
 Execução normal:
 
 ```bash
-llama-agentd --config /etc/llama-agentd/config.yaml
+ai-bash-gen --config /etc/ai-bash-gen/config.yaml
 ```
 
 Validação:
 
 ```bash
-llama-agentd validate --config /etc/llama-agentd/config.yaml
-llama-agentd validate-security
+ai-bash-gen validate --config /etc/ai-bash-gen/config.yaml
+ai-bash-gen validate-security
 ```
 
 ## Segurança
@@ -208,7 +208,7 @@ Princípios iniciais:
 - sem execução normal como root;
 - `llama-server` sem interface TCP;
 - sockets internos protegidos;
-- clientes acessam somente `/run/llama-agentd/routes/`;
+- clientes acessam somente `/run/ai-bash-gen/routes/`;
 - MCPs definidos por allowlist;
 - funções MCP de catálogo são somente leitura;
 - scripts gerados não são executados automaticamente;
@@ -223,8 +223,8 @@ A aplicação utilizará `log/slog` e enviará logs estruturados para stdout/std
 O systemd encaminhará os logs para journald:
 
 ```bash
-journalctl -u llama-agentd
-journalctl -u llama-agentd -f
+journalctl -u ai-bash-gen
+journalctl -u ai-bash-gen -f
 ```
 
 ## Estado do projeto
