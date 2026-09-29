@@ -26,33 +26,141 @@ Nome lógico:
 capability-catalog
 ```
 
-Objetivo: permitir que o agente descubra componentes reutilizáveis antes de gerar um script Bash.
+O Capability Catalog MCP não recebe diretamente a frase original escrita pelo usuário.
 
-O catálogo poderá representar:
+Antes da consulta ao catálogo, a solicitação passa por um agente pequeno chamado inicialmente de `request-normalizer`.
 
-- funções Bash;
-- scripts;
-- aplicações locais;
-- comandos internos aprovados;
-- serviços locais autorizados.
+Esse agente converte a solicitação para uma representação objetiva em inglês, separada em:
 
-O MCP é consultivo. Ele não executa os componentes encontrados.
+- input;
+- processing;
+- output;
+- canonical instruction.
 
-### Ferramentas
+O inglês será utilizado como linguagem canônica interna do catálogo porque os comandos, nomes de ferramentas e documentação técnica utilizados pelo projeto normalmente já utilizam termos em inglês.
 
-#### `search_capabilities`
+### Exemplo
 
-Pesquisa capacidades compatíveis com uma necessidade descrita pelo agente.
+Solicitação original:
 
-Entrada conceitual:
+```text
+preciso listar as pastas que estão dentro da pasta ~/ambiente
+```
+
+Resultado esperado do `request-normalizer`:
 
 ```json
 {
-  "query": "compactar uma pasta mantendo permissões",
-  "type": "function",
-  "language": "bash",
+  "canonical_instruction": "List subdirectories in ~/ambiente.",
+  "intent": "list_subdirectories",
+  "input": [
+    {
+      "name": "base_path",
+      "type": "path",
+      "value": "~/ambiente"
+    }
+  ],
+  "processing": [
+    "Enumerate immediate child entries.",
+    "Keep directories only."
+  ],
+  "output": [
+    {
+      "name": "directories",
+      "type": "list<path>"
+    }
+  ]
+}
+```
+
+O agente seguinte recebe essa estrutura e consulta os MCPs autorizados para descobrir uma função, script, aplicação ou serviço que possa atender ao requisito.
+
+Fluxo:
+
+```text
+User text
+   |
+   v
+request-normalizer
+   |
+   v
+NormalizedRequest
+   |
+   | canonical English
+   v
+capability-discovery agent
+   |
+   v
+Capability Catalog MCP
+   |
+   +--> function
+   +--> script
+   +--> application
+   +--> service/address
+   |
+   v
+selected capabilities
+   |
+   v
+bash-generator
+   |
+   v
+ScriptArtifact
+```
+
+O catálogo não deve executar a capacidade encontrada. Ele apenas descreve como ela funciona e como poderá ser utilizada pelo gerador.
+
+### Ferramentas MCP
+
+#### `search_capabilities`
+
+Pesquisa capacidades usando a instrução normalizada.
+
+Entrada sugerida:
+
+```json
+{
+  "canonical_instruction": "List subdirectories in ~/ambiente.",
+  "intent": "list_subdirectories",
+  "input_types": ["path"],
+  "output_types": ["list<path>"],
   "platform": "debian",
   "limit": 5
+}
+```
+
+Resposta resumida:
+
+```json
+{
+  "results": [
+    {
+      "id": "list-subdirectories",
+      "version": 1,
+      "type": "function",
+      "name": "List Subdirectories",
+      "description": "List immediate child directories of a given path.",
+      "match_instruction": "List subdirectories in a directory.",
+      "language": "bash",
+      "complexity_score": 1,
+      "usage_count": 42
+    }
+  ]
+}
+```
+
+A pesquisa deve retornar somente metadados suficientes para seleção.
+
+Código, endereço, argumentos completos e contratos ficam para `get_capability`.
+
+#### `get_capability`
+
+Entrada:
+
+```json
+{
+  "id": "list-subdirectories",
+  "version": 1
 }
 ```
 
@@ -60,163 +168,311 @@ Resposta conceitual:
 
 ```json
 {
-  "results": [
-    {
-      "id": "archive_directory",
-      "version": 2,
-      "type": "function",
-      "name": "Archive Directory",
-      "description": "Compacta um diretório preservando permissões.",
-      "language": "bash",
-      "complexity_score": 2,
-      "usage_count": 31
-    }
-  ]
-}
-```
-
-A pesquisa deve retornar somente informações resumidas. Código, argumentos completos e detalhes de invocação ficam para `get_capability`.
-
-#### `get_capability`
-
-Obtém a definição completa de uma capacidade.
-
-Entrada:
-
-```json
-{
-  "id": "archive_directory",
-  "version": 2
-}
-```
-
-Exemplo para uma função:
-
-```json
-{
-  "id": "archive_directory",
-  "version": 2,
-  "type": "function",
-  "language": "bash",
-  "description": "Compacta um diretório preservando permissões.",
-  "source": "archive_directory() { ... }",
-  "inputs_schema": {},
-  "outputs_schema": {},
-  "dependencies": ["tar"],
-  "platforms": ["linux", "debian"],
-  "complexity_score": 2,
-  "checksum": "sha256:..."
-}
-```
-
-Exemplo para uma aplicação:
-
-```json
-{
-  "id": "backup-manager",
+  "id": "list-subdirectories",
   "version": 1,
-  "type": "application",
-  "description": "Aplicação local responsável por criação de backups.",
-  "invocation": {
-    "kind": "local-executable",
-    "address": "/usr/local/bin/backup-manager",
-    "arguments_schema": {}
-  },
-  "outputs_schema": {},
-  "platforms": ["debian"],
-  "complexity_score": 4
+  "type": "function",
+  "name": "List Subdirectories",
+  "description": "List immediate child directories of a given path.",
+  "match_instruction": "List subdirectories in a directory.",
+  "language": "bash",
+  "source": "list_subdirectories() { find \"$1\" -mindepth 1 -maxdepth 1 -type d -print; }",
+  "inputs": [
+    {
+      "name": "base_path",
+      "type": "path",
+      "required": true
+    }
+  ],
+  "processing": [
+    "Enumerate immediate child entries.",
+    "Keep directories only."
+  ],
+  "outputs": [
+    {
+      "name": "directories",
+      "type": "list<path>"
+    }
+  ],
+  "dependencies": ["find"],
+  "platforms": ["linux", "debian"],
+  "risk_level": "read_only",
+  "complexity_score": 1,
+  "usage_count": 42
 }
 ```
 
-Exemplo para um script reutilizável:
+### Tipos de capacidade
 
-```json
-{
-  "id": "rotate-backups",
-  "version": 3,
-  "type": "script",
-  "description": "Rotaciona arquivos antigos de backup.",
-  "invocation": {
-    "kind": "local-script",
-    "address": "/usr/local/lib/ai-bash-gen/scripts/rotate-backups.sh",
-    "arguments_schema": {}
-  }
-}
-```
-
-### Banco de dados
-
-Banco inicial:
-
-```text
-/var/lib/ai-bash-gen/catalog/capabilities.db
-```
-
-Registro conceitual:
-
-```text
-capabilities
-
-id
-version
-type
-name
-language
-description
-source
-invocation
-inputs_schema
-outputs_schema
-tags
-dependencies
-platforms
-complexity_score
-enabled
-checksum
-created_at
-updated_at
-```
-
-Tipos iniciais:
+Valores iniciais:
 
 ```text
 function
 script
 application
+service
+```
+
+Uma capacidade poderá entregar:
+
+- código de função;
+- caminho de um script;
+- caminho de uma aplicação;
+- endereço interno de serviço;
+- informações de invocação.
+
+### Banco de dados
+
+Banco:
+
+```text
+/var/lib/ai-bash-gen/catalog/capabilities.db
+```
+
+A tabela principal deve armazenar o contrato da capacidade e também texto preparado para pesquisa.
+
+Estrutura recomendada:
+
+```sql
+CREATE TABLE capabilities (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    capability_key      TEXT NOT NULL,
+    version             INTEGER NOT NULL DEFAULT 1,
+
+    type                TEXT NOT NULL
+                        CHECK (type IN ('function','script','application','service')),
+
+    name                TEXT NOT NULL,
+
+    description_en      TEXT NOT NULL,
+    match_instruction_en TEXT NOT NULL,
+    intent              TEXT,
+
+    language            TEXT,
+    platform_json       TEXT NOT NULL DEFAULT '[]',
+    keywords_json       TEXT NOT NULL DEFAULT '[]',
+
+    input_json          TEXT NOT NULL DEFAULT '[]',
+    processing_json     TEXT NOT NULL DEFAULT '[]',
+    output_json         TEXT NOT NULL DEFAULT '[]',
+
+    source_code         TEXT,
+    address             TEXT,
+    invocation_json     TEXT,
+
+    dependencies_json   TEXT NOT NULL DEFAULT '[]',
+
+    risk_level          TEXT NOT NULL DEFAULT 'read_only'
+                        CHECK (risk_level IN (
+                            'read_only',
+                            'low',
+                            'medium',
+                            'high'
+                        )),
+
+    complexity_score    INTEGER NOT NULL DEFAULT 1
+                        CHECK (complexity_score BETWEEN 1 AND 5),
+
+    enabled             INTEGER NOT NULL DEFAULT 1
+                        CHECK (enabled IN (0,1)),
+
+    usage_count         INTEGER NOT NULL DEFAULT 0,
+    last_used_at        TEXT,
+
+    checksum            TEXT,
+
+    created_at          TEXT NOT NULL,
+    updated_at          TEXT NOT NULL,
+
+    UNIQUE (capability_key, version)
+);
+```
+
+### Função dos principais campos
+
+| Campo | Finalidade |
+|---|---|
+| `capability_key` | Identificador estável, por exemplo `list-subdirectories`. |
+| `type` | Diferencia função, script, aplicação ou serviço. |
+| `description_en` | Descrição humana objetiva da capacidade. |
+| `match_instruction_en` | Frase canônica usada para aproximar a solicitação normalizada da capacidade. |
+| `intent` | Intenção curta e estável, como `list_subdirectories`. |
+| `keywords_json` | Sinônimos e termos úteis à pesquisa. |
+| `input_json` | Contrato das entradas. |
+| `processing_json` | Etapas conceituais realizadas pela capacidade. |
+| `output_json` | Contrato da saída. |
+| `source_code` | Código quando a capacidade for uma função incorporável. |
+| `address` | Caminho ou endereço quando for script, aplicação ou serviço. |
+| `invocation_json` | Forma segura de invocação e argumentos suportados. |
+| `risk_level` | Indica o impacto esperado da capacidade. |
+| `complexity_score` | Complexidade de 1 a 5. |
+| `usage_count` | Contador agregado de uso efetivo. |
+
+### Por que entradas, processamento e saídas ficam em JSON
+
+A estrutura varia bastante entre capacidades.
+
+Uma função pode receber somente um caminho:
+
+```json
+[
+  {
+    "name": "base_path",
+    "type": "path",
+    "required": true
+  }
+]
+```
+
+Outra aplicação pode receber vários parâmetros.
+
+Usar JSON permite evoluir o contrato sem criar uma nova coluna para cada argumento.
+
+O Go deve validar esses campos antes de persistir os dados.
+
+### Busca textual
+
+Na primeira versão, evitar embeddings.
+
+Criar um índice SQLite FTS5 contendo principalmente:
+
+- `name`;
+- `description_en`;
+- `match_instruction_en`;
+- `intent`;
+- keywords normalizadas.
+
+Exemplo conceitual:
+
+```sql
+CREATE VIRTUAL TABLE capabilities_fts USING fts5(
+    capability_key UNINDEXED,
+    name,
+    description_en,
+    match_instruction_en,
+    intent,
+    keywords
+);
+```
+
+A busca poderá priorizar nesta ordem:
+
+1. `intent` exato;
+2. `match_instruction_en`;
+3. nome;
+4. palavras-chave;
+5. descrição.
+
+Assim, a requisição:
+
+```text
+List subdirectories in ~/ambiente.
+```
+
+pode ser comparada com:
+
+```text
+List subdirectories in a directory.
+```
+
+sem depender de um modelo de embeddings.
+
+### Exemplo de registro
+
+```sql
+INSERT INTO capabilities (
+    capability_key,
+    version,
+    type,
+    name,
+    description_en,
+    match_instruction_en,
+    intent,
+    language,
+    platform_json,
+    keywords_json,
+    input_json,
+    processing_json,
+    output_json,
+    source_code,
+    dependencies_json,
+    risk_level,
+    complexity_score,
+    created_at,
+    updated_at
+)
+VALUES (
+    'list-subdirectories',
+    1,
+    'function',
+    'List Subdirectories',
+    'List immediate child directories of a given path.',
+    'List subdirectories in a directory.',
+    'list_subdirectories',
+    'bash',
+    '["linux","debian"]',
+    '["list directory","subdirectory","folder","find directories"]',
+    '[{"name":"base_path","type":"path","required":true}]',
+    '["Enumerate immediate child entries.","Keep directories only."]',
+    '[{"name":"directories","type":"list<path>"}]',
+    'list_subdirectories() { find "$1" -mindepth 1 -maxdepth 1 -type d -print; }',
+    '["find"]',
+    'read_only',
+    1,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+);
 ```
 
 ### Telemetria
 
-O número de consultas não representa uso real.
+`usage_count` é apenas uma métrica agregada para consulta rápida.
+
+Manter também histórico individual em tabela separada:
+
+```sql
+CREATE TABLE capability_usage (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    capability_id       INTEGER NOT NULL,
+    capability_version  INTEGER NOT NULL,
+
+    request_id          TEXT NOT NULL,
+    agent_id            TEXT NOT NULL,
+    pipeline_id         TEXT,
+
+    used_at             TEXT NOT NULL,
+
+    FOREIGN KEY (capability_id)
+        REFERENCES capabilities(id)
+);
+```
 
 Uma capacidade é considerada utilizada somente quando:
 
-1. o agente inclui a capacidade no `ScriptArtifact`;
-2. o artefato é válido;
-3. a capacidade e sua versão existem;
-4. a geração termina com sucesso.
+1. foi selecionada pelo gerador;
+2. aparece no `ScriptArtifact`;
+3. o artefato foi validado;
+4. a geração terminou com sucesso.
 
-Banco de telemetria:
+Consultar uma capacidade pelo MCP não incrementa `usage_count`.
 
-```text
-/var/lib/ai-bash-gen/state/telemetry.db
-```
-
-Evento conceitual:
+Depois do uso efetivo, o `ai-bash-gen` deverá:
 
 ```text
-capability_usage
-
-id
-capability_id
-capability_version
-request_id
-agent_id
-pipeline_id
-used_at
+insert capability_usage
+        |
+        v
+increment capabilities.usage_count
+        |
+        v
+update last_used_at
+        |
+        v
+evaluate promotion policy
 ```
 
-Capacidades com uso elevado ou alta complexidade poderão gerar uma iniciativa para serem promovidas a aplicações ou scripts independentes.
+Capacidades muito utilizadas ou complexas poderão gerar uma iniciativa para serem transformadas em aplicação ou script dedicado.
 
 ## 2. Google Mail MCP
 
