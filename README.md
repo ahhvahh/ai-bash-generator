@@ -1,1 +1,243 @@
-# ai-bash-generator
+# AI Bash Generator
+
+Projeto para geração local de scripts Bash utilizando agentes baseados em LLM, `llama.cpp`, MCP (Model Context Protocol), Unix Domain Sockets e Protocol Buffers.
+
+O objetivo é transformar uma solicitação em linguagem natural em um script Bash estruturado, reutilizando funções, aplicações e informações disponibilizadas por servidores MCP controlados pelo próprio ambiente.
+
+## Objetivos
+
+O projeto foi desenhado para:
+
+- executar localmente em Debian/Linux;
+- funcionar em hardware limitado, inicialmente com 2 núcleos de CPU e 8 GB de RAM;
+- utilizar `llama.cpp` como motor de inferência;
+- manter o `llama-server` isolado de TCP/IP e acessível somente pela aplicação;
+- expor somente Unix Domain Sockets controlados por `llama-agentd`;
+- utilizar Protocol Buffers como protocolo entre clientes e o daemon;
+- permitir criação de agentes por configuração;
+- permitir que agentes consultem servidores MCP autorizados;
+- manter catálogo e telemetria de funções reutilizáveis;
+- registrar logs estruturados no journald.
+
+## Componentes
+
+### `llama-agentd`
+
+Daemon principal escrito em Go.
+
+Responsabilidades:
+
+- configuração e instalação;
+- criação e carregamento de agentes;
+- roteamento de requisições;
+- execução de pipelines;
+- comunicação com `llama-server`;
+- validação de respostas;
+- controle de acesso aos MCPs;
+- telemetria;
+- logs;
+- segurança.
+
+### `llama-server`
+
+Motor de inferência fornecido pelo `llama.cpp`.
+
+Será executado como processo gerenciado pelo `llama-agentd`, utilizando exclusivamente um Unix Domain Socket privado.
+
+Exemplo:
+
+```text
+/run/llama-agentd/internal/llama.sock
+```
+
+Nenhuma porta TCP será exposta.
+
+### Agentes
+
+Agentes são definidos por arquivos de configuração e carregados dinamicamente.
+
+Um agente contém, no mínimo:
+
+- ID;
+- nome;
+- modelo;
+- prompt de sistema;
+- parâmetros de geração;
+- MCPs permitidos;
+- formato de entrada e saída.
+
+A documentação detalhada está em [docs/AGENTS.md](docs/AGENTS.md).
+
+### MCP
+
+Os servidores MCP fornecem capacidades consultivas aos agentes.
+
+A primeira versão prevê dois MCPs:
+
+1. **Function Catalog MCP** — pesquisa funções, scripts e aplicações reutilizáveis.
+2. **Google Mail MCP** — pesquisa e leitura controlada de mensagens de uma caixa Gmail autorizada.
+
+A documentação está em [docs/MCP.md](docs/MCP.md).
+
+## Arquitetura
+
+```text
+Cliente
+   |
+   | Protobuf
+   v
+/run/llama-agentd/routes/*.sock
+   |
+   v
+llama-agentd
+   |
+   +-- Router
+   +-- Agent Manager
+   +-- Pipeline Manager
+   +-- Tool/MCP Orchestrator
+   +-- Schema Validator
+   +-- Telemetry
+   |
+   | HTTP sobre Unix Socket
+   v
+/run/llama-agentd/internal/llama.sock
+   |
+   v
+llama-server
+   |
+   +-- MCP: function-catalog
+   +-- MCP: google-mail
+```
+
+## Pipeline inicial
+
+```text
+Solicitação do usuário
+        |
+        v
+request-organizer
+        |
+        v
+TaskSpec
+        |
+        v
+bash-generator
+        |
+        +--> consulta MCPs permitidos
+        |
+        v
+ScriptArtifact
+        |
+        v
+validação + telemetria
+        |
+        v
+script Bash
+```
+
+O primeiro agente organiza a solicitação. O segundo agente gera o script e pode consultar MCPs para localizar funções, aplicações ou informações necessárias.
+
+## Catálogo de funções
+
+O Function Catalog armazenará funções reutilizáveis, incluindo:
+
+- identificador;
+- versão;
+- linguagem;
+- descrição;
+- implementação;
+- entradas;
+- saídas;
+- dependências;
+- plataformas suportadas;
+- complexidade;
+- checksum.
+
+O uso real das funções será registrado separadamente.
+
+Funções muito utilizadas ou de alta complexidade poderão gerar uma iniciativa para transformação em aplicação ou script independente.
+
+## Estrutura de diretórios planejada
+
+```text
+/etc/llama-agentd/
+├── config.yaml
+├── agents/
+├── schemas/
+└── mcp/
+
+/var/lib/llama-agentd/
+├── models/
+├── catalog/
+└── state/
+
+/run/llama-agentd/
+├── routes/
+└── internal/
+    └── llama.sock
+```
+
+## Instalação e configuração
+
+O executável deverá possuir um assistente interativo:
+
+```bash
+llama-agentd --configure
+```
+
+O assistente será responsável por sugerir caminhos compatíveis com Debian, criar o usuário de serviço, configurar permissões, copiar os binários e instalar a unidade systemd.
+
+Execução normal:
+
+```bash
+llama-agentd --config /etc/llama-agentd/config.yaml
+```
+
+Validação:
+
+```bash
+llama-agentd validate --config /etc/llama-agentd/config.yaml
+llama-agentd validate-security
+```
+
+## Segurança
+
+Princípios iniciais:
+
+- daemon executado como usuário de serviço dedicado;
+- sem execução normal como root;
+- `llama-server` sem interface TCP;
+- sockets internos protegidos;
+- clientes acessam somente `/run/llama-agentd/routes/`;
+- MCPs definidos por allowlist;
+- funções MCP de catálogo são somente leitura;
+- scripts gerados não são executados automaticamente;
+- respostas do LLM são validadas;
+- prompts completos não são gravados em logs por padrão;
+- uso de `PrivateNetwork=yes` e `RestrictAddressFamilies=AF_UNIX` quando compatível.
+
+## Logs
+
+A aplicação utilizará `log/slog` e enviará logs estruturados para stdout/stderr.
+
+O systemd encaminhará os logs para journald:
+
+```bash
+journalctl -u llama-agentd
+journalctl -u llama-agentd -f
+```
+
+## Estado do projeto
+
+O projeto está atualmente em fase de definição de arquitetura e contratos.
+
+Próximas etapas:
+
+- definir schemas de configuração;
+- implementar o modo `--configure`;
+- implementar o daemon e protocolo Protobuf;
+- implementar gerenciamento de agentes;
+- implementar Function Catalog MCP;
+- implementar Google Mail MCP;
+- integrar `llama.cpp`;
+- adicionar testes de segurança e integração.
