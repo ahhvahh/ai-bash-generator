@@ -1,546 +1,291 @@
 # Revisão de Arquitetura
 
-Esta revisão analisa o pipeline atual do `ai-bash-gen` antes da implementação.
+Esta revisão acompanha decisões arquiteturais do pipeline do `ai-bash-gen`.
 
-O objetivo é identificar pontos que podem causar falha de execução, inconsistência de dados, comportamento imprevisível do LLM ou dificuldade de evolução.
+Diagramas: [../pipeline/SEQUENCE_DIAGRAMS.md](../pipeline/SEQUENCE_DIAGRAMS.md)
 
-Os diagramas de sequência estão em [../pipeline/SEQUENCE_DIAGRAMS.md](../pipeline/SEQUENCE_DIAGRAMS.md).
+Contrato: [../../proto/ai_bash_gen/v1/pipeline.proto](../../proto/ai_bash_gen/v1/pipeline.proto)
 
-## Resumo
+> **Status RESOLVIDO** significa que a regra, o contrato e a responsabilidade arquitetural foram definidos. A implementação em Go/PostgreSQL ainda faz parte da fase de desenvolvimento.
 
-Foram identificados problemas que devem ser resolvidos antes ou durante a primeira implementação.
-
-Classificação:
+## Resumo atual
 
 ```text
-BLOCKER  impede implementar o fluxo de forma confiável
-HIGH     pode causar erro funcional, segurança ou inconsistência
-MEDIUM   afeta desempenho, manutenção ou previsibilidade
-LOW      melhoria de organização/evolução
+BLOCKER   8 resolvidos / 0 abertos
+HIGH      9 resolvidos / 0 abertos
+MEDIUM    4 resolvidos / 1 aberto
 ```
 
-## ✅ RESOLVIDO — BLOCKER-01 — ABI para resultados entre funções Bash
+O único ponto ainda aberto exige benchmark real com os modelos/tokenizers utilizados.
+
+---
+
+## ✅ RESOLVIDO — BLOCKER-01 — ABI entre capabilities
 
 ### Decisão
 
-O canal padrão de composição entre capabilities será o padrão Unix:
+Composição segue o padrão Unix:
 
 ```text
-capability A
-    |
-    | stdout
-    v
-capability B
-    |
-    | stdin
-    v
-capability C
+producer stdout -> consumer stdin
 ```
 
-Uma capability que produz dados deve escrever seu resultado em `stdout`.
-
-Quando uma capability consumir o resultado de outra, esse conteúdo será fornecido por `stdin`.
-
-O `result_ref` representa logicamente essa conexão dentro do plano:
+Regras:
 
 ```text
-resultList
-    =
-stdout da capability produtora
-    ->
-stdin da capability consumidora
-```
-
-### Regras do ABI
-
-```text
-stdout   resultado funcional da capability
-stdin    entrada proveniente de uma capability anterior
-stderr   mensagens de diagnóstico e erro
+stdout   resultado funcional
+stdin    entrada do estágio anterior
+stderr   diagnóstico
 exit 0   sucesso
 exit !=0 falha
 ```
 
-Dados funcionais não devem ser escritos em `stderr`.
+`result_ref` representa a conexão lógica entre o stdout produtor e o stdin consumidor.
 
-Mensagens de log ou diagnóstico não devem ser misturadas ao resultado enviado por `stdout`.
+O conteúdo é validado por `DataContract`.
 
-### Exemplo
+### Topologia inicial
 
-```bash
-list_files "$path" |
-filter_executables |
-sort_by_size
-```
+Uma chamada possui um único stdin.
 
-Conceitualmente:
+A primeira versão suporta diretamente pipelines lineares:
 
 ```text
-list_files
-    |
-    | stdout = resultList
-    v
-filter_executables
-    |
-    | stdout = filteredList
-    v
-sort_by_size
-    |
-    | stdout = sortedList
-    v
-final output
+A | B | C
 ```
 
-### Compatibilidade do conteúdo
-
-A decisão de transporte está resolvida com `stdout/stdin`.
-
-A representação do conteúdo transportado — por exemplo texto, tabela estruturada ou lista — continua sendo responsabilidade do contrato de entrada/saída da capability e da validação de tipos.
-
-Esse ponto passa a ser tratado pelo **BLOCKER-04 — Sistema de tipos insuficiente para composição**, e não mais como problema de transporte.
-
-**Status:** RESOLVIDO.
+Fan-out/fan-in exige capability explícita de `tee`, merge/join ou materialização intermediária.
 
 ---
 
-## BLOCKER-02 — Duas fontes de verdade no GenerationResult
+## ✅ RESOLVIDO — BLOCKER-02 — Duas fontes de verdade
 
-Hoje:
+### Problema anterior
 
-```proto
-message GenerationResult {
-  repeated CapabilityCall calls = 2;
-  repeated GeneratedCapability generated_capabilities = 3;
-  string script = 4;
-}
-```
-
-O LLM pode produzir:
+`GenerationResult` continha:
 
 ```text
-calls = A -> B -> C
+calls
+generated_capabilities
+script
 ```
 
-mas escrever um `script` que faça outra coisa.
+O plano e o script poderiam divergir.
 
-Não está definido qual deles vence.
+### Decisão
 
-### Proposta
+O LLM produz somente:
 
-O LLM deve produzir o plano estruturado e as novas implementações.
+```text
+GenerationPlan
+```
 
-O arquivo final deve ser montado deterministicamente pelo `bash-output`.
+O campo `script` foi removido do contrato.
 
-Fluxo recomendado:
+Fluxo:
 
 ```text
 GenerationPlan
       |
       v
-validation
+Validation
       |
       v
-deterministic assembler
+deterministic Bash Output
       |
       v
 BashArtifact
 ```
 
-Remover `script` como fonte canônica ou tratá-lo apenas como campo derivado.
+O arquivo Bash é derivado deterministicamente do plano e das versões de capabilities carregadas.
 
 ---
 
-## BLOCKER-03 — get_capability não possui protocolo de turnos
+## ✅ RESOLVIDO — BLOCKER-03 — Protocolo de turnos de get_capability
 
-A documentação diz que o `bash-generator` pode solicitar:
+### Decisão
 
-```text
-get_capability(id)
-```
-
-durante sua decisão.
-
-Porém o contrato atual só possui:
-
-```text
-GenerationRequest -> GenerationResult
-```
-
-Não há mensagem que represente:
-
-```text
-LLM:
-"preciso dos detalhes da capability X"
-
-aplicação:
-"estes são os detalhes"
-
-LLM:
-"agora continuo"
-```
-
-### Risco
-
-A implementação pode acabar dependendo de comportamento específico do tool calling do modelo ou do llama.cpp sem um contrato interno estável.
-
-### Proposta
-
-Formalizar um loop:
+Foi formalizado um tool loop:
 
 ```text
 GeneratorTurnRequest
+        |
+        v
+GeneratorTurnResult
+        |
+        +--> GeneratorToolRequests
+        |       |
+        |       v
+        |   Tool Orchestrator
+        |       |
+        |       v
+        |   GeneratorToolResponse
+        |       |
+        +-------+
+        |
+        v
+GenerationPlan
+```
+
+Mensagens adicionadas:
+
+```text
+GeneratorTurnRequest
+GeneratorTurnResult
 GeneratorToolRequest
+GeneratorToolRequests
 GeneratorToolResponse
-GeneratorFinalResult
+ToolError
 ```
 
-ou definir explicitamente que o MCP/tool loop pertence ao `ai-bash-gen` e documentar o envelope utilizado.
+`get_capability` é um tipo explícito de tool request.
+
+MCPs de geração também podem utilizar:
+
+```text
+McpToolRequest
+ToolPayload
+McpToolResult
+```
+
+O `ai-bash-gen` é o dono do loop e da autorização. O `llama-server` é somente o motor de inferência.
 
 ---
 
-## BLOCKER-04 — Sistema de tipos insuficiente para composição
+## ✅ RESOLVIDO — BLOCKER-04 — Sistema de tipos estruturados
 
-Campos como:
+### Decisão
 
-```proto
-string type
-string input_contract
-string output_contract
-```
-
-não permitem validação forte.
-
-Duas capabilities podem declarar:
+Strings livres como:
 
 ```text
-type = "table"
+"type": "table"
 ```
 
-mas uma produzir:
+não são mais o contrato canônico.
+
+Foram definidos:
 
 ```text
-name,size,type
-```
-
-e outra esperar:
-
-```text
-email,date,subject
-```
-
-### Proposta
-
-Criar tipos estruturados.
-
-Exemplo conceitual:
-
-```text
-DataType
-RecordSchema
+DataKind
+DataContract
 FieldSchema
-CollectionType
-Encoding
-```
-
-Compatibilidade deve ser calculada pela aplicação, não pelo texto produzido pelo LLM.
-
----
-
-## BLOCKER-05 — Versionamento do catálogo não está consistente
-
-A documentação prevê versões, mas:
-
-```sql
-capability_detail.capability_id PRIMARY KEY
-version SMALLINT
-```
-
-permite apenas uma linha de detalhe por capability.
-
-O Protobuf também solicita:
-
-```text
-get_capability(id)
-```
-
-sem versão.
-
-### Risco
-
-Uma atualização muda silenciosamente uma capability que já foi usada em scripts anteriores.
-
-### Proposta
-
-Separar:
-
-```text
-capability
-    identidade lógica
-
-capability_version
-    versão imutável
+StreamEncoding
+ParameterContract
+CapabilityInterface
 ```
 
 Exemplo:
 
 ```text
+kind: TABLE
+fields: name(TEXT), size(INTEGER), type(TEXT)
+encoding: JSON_LINES
+```
+
+A aplicação valida deterministicamente:
+
+- tipo;
+- campos;
+- obrigatoriedade;
+- encoding;
+- stdin/stdout;
+- argumentos.
+
+FTS continua sendo apenas mecanismo de descoberta semântica.
+
+---
+
+## ✅ RESOLVIDO — BLOCKER-05 — Versionamento do catálogo
+
+### Decisão
+
+Separação:
+
+```text
 capability
-  id
-  capability_key
-  active_version_id
+    identidade lógica e campos de pesquisa
 
 capability_version
-  id
-  capability_id
-  version
-  implementation
-  contracts
-  checksum
+    definição imutável
 ```
 
-`get_capability` deve devolver o ID/version da definição efetivamente utilizada.
-
----
-
-## BLOCKER-06 — script/application/service não possuem contrato de invocação no Protobuf
-
-`CapabilityType` permite:
+Cada versão possui:
 
 ```text
-FUNCTION
-SCRIPT
-APPLICATION
-SERVICE
-```
-
-mas `CapabilityDefinition` contém principalmente:
-
-```text
-function_name
-source
-```
-
-Não há representação suficiente para:
-
-- caminho do executável;
-- argumentos;
-- stdin/stdout;
-- Unix Socket;
-- endpoint de serviço;
-- timeout;
-- ambiente necessário.
-
-### Proposta
-
-Usar `oneof implementation`:
-
-```text
-function
-script
-application
-service
-```
-
-cada um com contrato próprio.
-
----
-
-## BLOCKER-07 — Capability candidata pode aparecer na pesquisa antes de ser aprovada
-
-O estado está em `capability_detail.status`, enquanto `search_capabilities` consulta apenas:
-
-```sql
-FROM capability
-WHERE enabled = TRUE
-```
-
-`capability.enabled` possui default `TRUE`.
-
-Uma capability gerada como `candidate` pode ser pesquisável se o insert não controlar explicitamente esse campo.
-
-### Proposta
-
-A pesquisa deve exigir estado ativo de forma estrutural.
-
-Por exemplo:
-
-```text
-capability.active_version_id IS NOT NULL
-```
-
-ou manter `status` na tabela/index pesquisado.
-
-Nunca depender apenas de convenção no código de insert.
-
----
-
-## BLOCKER-08 — Persistência e criação do arquivo não possuem fronteira transacional
-
-Hoje o `bash-output` pode:
-
-1. persistir nova capability;
-2. criar arquivo.
-
-Banco PostgreSQL e filesystem não compartilham uma transação.
-
-Exemplo de falha:
-
-```text
-INSERT capability OK
-gravação do arquivo FAIL
-```
-
-ou:
-
-```text
-arquivo criado OK
-INSERT capability FAIL
-```
-
-### Proposta
-
-Separar dois resultados independentes:
-
-```text
-validated generation
-      |
-      +--> publish capability (idempotente)
-      |
-      +--> materialize BashArtifact
-```
-
-Cada operação deve ser repetível com um `request_id`/idempotency key.
-
----
-
-## HIGH-01 — Sem representação adequada de informação ausente
-
-O normalizador recebe a regra:
-
-```text
-não inventar valores
-```
-
-mas `NormalizedRequest` não possui um contrato claro para:
-
-```text
-required input is missing
-```
-
-O status `MISSING_INFORMATION` só aparece no `GenerationResult`.
-
-### Proposta
-
-Adicionar ao resultado da normalização:
-
-```text
-missing_inputs[]
-normalization_status
-```
-
-e interromper o pipeline antes da busca quando faltar informação essencial.
-
----
-
-## HIGH-02 — depends_on e result_ref podem divergir
-
-Hoje existem dois mecanismos de dependência:
-
-```text
-depends_on
-result_ref
-```
-
-Pode ocorrer:
-
-```text
-result_ref = resultList
-depends_on = outra_tarefa
-```
-
-### Proposta
-
-Definir:
-
-- `result_ref` cria dependência de dados automaticamente;
-- `depends_on` existe apenas para dependência de controle sem troca de dados.
-
-A validação deve derivar o DAG final e detectar inconsistências.
-
----
-
-## HIGH-03 — Telemetria não identifica a versão acessada
-
-`capability_usage` guarda apenas:
-
-```text
+id
 capability_id
-requested_at
+version
+status
+contracts
+implementation
+dependencies
+risk
+checksum
+fingerprint
 ```
 
-Depois de uma atualização não será possível saber qual implementação foi entregue ao LLM.
-
-### Proposta
-
-O append mínimo deveria apontar para versão imutável:
+`CapabilityDefinition` devolve:
 
 ```text
 capability_version_id
-requested_at
+version
+checksum
 ```
 
-Opcionalmente incluir `request_id` para auditoria sem aumentar muito o registro.
+Quando `get_capability(id)` não recebe versão, o catálogo resolve a versão ativa.
+
+O FK composto garante que `active_version_id` pertença à capability correta.
+
+Também existe garantia de no máximo uma versão ativa por capability.
 
 ---
 
-## HIGH-04 — Validação Bash apenas sintática é insuficiente
+## ✅ RESOLVIDO — BLOCKER-06 — Contrato por tipo de implementação
 
-`bash -n` detecta sintaxe, mas não detecta:
+### Decisão
 
-- variável não inicializada;
-- quoting incorreto;
-- comando inexistente;
-- dependência não declarada;
-- uso perigoso de `eval`;
-- globbing inesperado;
-- erros comuns identificáveis estaticamente.
-
-### Proposta
-
-Pipeline de validação:
+Foi criado:
 
 ```text
-protobuf validation
-      |
-      v
-contract validation
-      |
-      v
-policy validation
-      |
-      v
-bash -n
-      |
-      v
-ShellCheck, quando disponível
-      |
-      v
-dependency validation
+CapabilityImplementation
+    oneof
+      function
+      script
+      application
+      service
 ```
 
-Execução real continua proibida na primeira versão.
+Contratos:
+
+```text
+FunctionImplementation
+  function_name
+  source
+
+ScriptImplementation
+  path
+  fixed_args
+
+ApplicationImplementation
+  executable_path
+  fixed_args
+
+ServiceImplementation
+  unix_socket
+  operation
+  timeout_ms
+```
+
+A interface de dados é independente do tipo de implementação.
 
 ---
 
-## HIGH-05 — Capabilities geradas pelo LLM precisam de nível de confiança
+## ✅ RESOLVIDO — BLOCKER-07 — Candidate disponível antes de aprovação
 
-Uma função criada em uma requisição pode ser reutilizada por muitas outras no futuro.
+### Decisão
 
-Um erro deixa de afetar uma requisição e passa a contaminar o catálogo.
-
-### Proposta
-
-Estados:
+O status foi mantido explicitamente, conforme definido:
 
 ```text
 candidate
@@ -551,249 +296,348 @@ deprecated
 blocked
 ```
 
-Para operações de maior risco, `validated` não deve significar automaticamente `active`.
+A busca normal exige simultaneamente:
+
+```text
+capability.enabled = TRUE
+active_version_id IS NOT NULL
+capability_version.status = active
+```
+
+Além disso:
+
+- há somente uma versão ativa por capability;
+- ativação ocorre em transação;
+- versões candidate/validated/approved não aparecem em `search_capabilities`.
 
 ---
 
-## HIGH-06 — Concorrência pode criar capabilities equivalentes
+## ✅ RESOLVIDO — BLOCKER-08 — PostgreSQL e filesystem não são transacionais juntos
 
-Duas requisições simultâneas podem:
+### Decisão
 
-1. pesquisar;
-2. não encontrar;
-3. gerar a mesma funcionalidade;
-4. deduplicar antes de qualquer insert;
-5. inserir duas capabilities.
+Não será simulada uma transação distribuída.
 
-### Proposta
+Após a validação existem duas operações independentes:
 
-Usar uma assinatura/fingerprint canônica e constraint única ou lock transacional durante publicação.
+```text
+validated plan
+     |
+     +--> Capability Publisher
+     |
+     +--> Bash Output
+```
+
+Publicação usa:
+
+```text
+CapabilityPublishRequest
+request_id
+idempotency_key
+fingerprint
+```
+
+O banco possui constraint de fingerprint para concorrência.
+
+`Bash Output` usa gravação atômica no filesystem.
+
+Cada operação é repetível independentemente.
 
 ---
 
-## HIGH-07 — Ferramentas de geração e ferramentas de runtime estão misturadas
+# Revisão dos itens HIGH
 
-O Gmail MCP pode fornecer informação durante a geração.
+## ✅ RESOLVIDO — HIGH-01 — Informação obrigatória ausente
 
-Isso não significa que o script Bash gerado consiga consultar Gmail quando for executado depois.
+Foram adicionados:
 
-Existem dois conceitos diferentes:
+```text
+NormalizationStatus
+MissingInput
+NormalizedRequest.status
+NormalizedRequest.missing_inputs
+```
+
+`MISSING_INFORMATION` interrompe o pipeline antes da pesquisa.
+
+---
+
+## ✅ RESOLVIDO — HIGH-02 — depends_on x result_ref
+
+Semântica definida:
+
+```text
+result_ref  = dependência de dados
+depends_on  = dependência de controle
+```
+
+A aplicação deriva o DAG e detecta ciclos/inconsistências.
+
+---
+
+## ✅ RESOLVIDO — HIGH-03 — Telemetria sem versão
+
+`capability_usage` agora referencia:
+
+```text
+capability_version_id
+request_id
+requested_at
+```
+
+Existe unicidade por:
+
+```text
+(request_id, capability_version_id)
+```
+
+O evento identifica exatamente a definição entregue.
+
+---
+
+## ✅ RESOLVIDO — HIGH-04 — Validação Bash insuficiente
+
+Pipeline obrigatório:
+
+```text
+protobuf validation
+graph validation
+contract validation
+version validation
+policy validation
+deterministic assembly preview
+bash -n
+ShellCheck
+dependency validation
+```
+
+O script não é executado.
+
+Se ShellCheck estiver indisponível por erro de ambiente, a validação falha explicitamente.
+
+---
+
+## ✅ RESOLVIDO — HIGH-05 — Confiança de capabilities geradas
+
+Lifecycle:
+
+```text
+candidate
+validated
+approved
+active
+deprecated
+blocked
+```
+
+Somente `active` é pesquisável.
+
+Validação técnica não implica ativação automática.
+
+---
+
+## ✅ RESOLVIDO — HIGH-06 — Concorrência gera duplicatas
+
+Publicação usa:
+
+- fingerprint canônica;
+- índice único parcial;
+- idempotency key;
+- transação;
+- lock da identidade da capability ao criar nova versão.
+
+Conflito de fingerprint reutiliza a versão existente.
+
+---
+
+## ✅ RESOLVIDO — HIGH-07 — Generation-time tools x runtime capabilities
+
+Conceitos separados:
 
 ```text
 generation-time tool
+    usada pelo LLM durante a geração
+
 runtime capability
+    usada pelo arquivo Bash quando executado futuramente
 ```
 
-Eles precisam ser separados.
+Uma tool do gerador não é automaticamente embutida no script.
 
-Exemplo:
-
-```text
-"leia meu último e-mail agora e gere um relatório"
-    generation-time
-
-"gere um script que consulte novos e-mails amanhã"
-    runtime
-```
-
-O segundo caso exige uma capability invocável pelo script.
+Essa regra está documentada em [../MCP.md](../MCP.md).
 
 ---
 
-## HIGH-08 — Propriedade dos MCPs está contraditória
+## ✅ RESOLVIDO — HIGH-08 — Propriedade dos MCPs
 
-O README ainda apresenta MCPs abaixo do `llama-server`.
-
-Outros documentos colocam controle e autorização no `ai-bash-gen`.
-
-Para isolamento, auditoria e Gmail, a propriedade precisa ser inequívoca.
-
-### Proposta
+Arquitetura definida:
 
 ```text
-LLM/llama-server
-      |
-      | tool request
-      v
-ai-bash-gen Tool Orchestrator
-      |
-      +--> Capability Catalog
-      +--> Google Mail
+LLM / llama-server
+       |
+       v
+ai-bash-gen Tool/MCP Orchestrator
+       |
+       +--> Capability Catalog
+       +--> Google Mail
 ```
 
-O `llama-server` deve permanecer motor de inferência, não autoridade de acesso.
+O `ai-bash-gen` é autoridade de acesso, validação e auditoria.
 
 ---
 
-## HIGH-09 — Semântica de caminhos com ~ pode produzir Bash incorreto
+## ✅ RESOLVIDO — HIGH-09 — Caminhos com ~
 
-A normalização preserva:
+Valor semântico e representação shell são separados.
+
+O normalizador preserva:
 
 ```text
 ~/ambiente
 ```
 
-mas:
-
-```bash
-some_function "~/ambiente"
-```
-
-não expande `~` no Bash.
-
-### Proposta
-
-Manter o valor semântico separado de sua representação shell.
-
-O materializador deve converter caminhos de home de maneira segura, por exemplo:
+O materializador pode produzir:
 
 ```bash
 "$HOME/ambiente"
 ```
 
-sem alterar o dado original dentro da `NormalizedRequest`.
+Quoting e expansão segura são responsabilidade exclusiva do `bash-output`.
 
 ---
 
-## MEDIUM-01 — Número de candidatos pode crescer rapidamente
+# Revisão dos itens MEDIUM
 
-Com:
+## ✅ RESOLVIDO — MEDIUM-01 — Crescimento de candidatos
 
-```text
-5 candidatos compostos
-+
-5 candidatos por tarefa
-```
-
-uma requisição com 10 tarefas pode entregar até 55 candidatos ao gerador.
-
-### Proposta
-
-Além do limite por busca, definir:
+Foi criado `SearchBudget`:
 
 ```text
-global_candidate_budget
-max_candidates_per_task
+composite_limit
+per_task_limit
+global_candidate_limit
 max_capability_details
 ```
 
-e deduplicar IDs globalmente.
+Candidatos são deduplicados globalmente antes do prompt.
 
 ---
 
-## MEDIUM-02 — Repetição de get_capability
+## ✅ RESOLVIDO — MEDIUM-02 — get_capability repetido
 
-O mesmo ID pode aparecer como candidato composto e em várias tarefas.
-
-Sem cache, cada consulta pode:
-
-- ler novamente o PostgreSQL;
-- aumentar telemetria várias vezes;
-- consumir tokens novamente.
-
-### Proposta
-
-Cache por requisição:
+Existe cache por requisição:
 
 ```text
 capability_version_id -> CapabilityDefinition
 ```
 
-Uma definição já carregada não deve gerar novo append dentro da mesma requisição, salvo política explícita.
+A mesma versão é carregada uma única vez por request.
+
+Isso também impede telemetria duplicada na mesma requisição.
 
 ---
 
-## MEDIUM-03 — TextProto não garante economia de tokens
+## ⚠️ ABERTO — MEDIUM-03 — TextProto pode não economizar tokens
 
-Protobuf binário economiza IPC.
+Protobuf binário reduz IPC, mas o LLM consome texto.
 
-TextProto é estruturado, porém pode ser mais verboso que JSON compacto em alguns tokenizers.
+Não há base suficiente para afirmar que TextProto usa menos tokens que JSON compacto para os modelos selecionados.
 
-### Proposta
+### Ação necessária
 
-Não assumir economia.
-
-Criar benchmark usando o tokenizer do modelo:
+Depois que os modelos forem fixados, executar benchmark com:
 
 ```text
-JSON compacto
 TextProto
-formato compacto específico
+JSON compacto
+formato compacto alternativo
 ```
 
-e medir:
+Medir:
 
-- tokens;
-- taxa de parsing;
-- taxa de respostas válidas;
+- tokens de entrada;
+- tokens de saída;
+- taxa de parsing válido;
+- taxa de aderência ao schema;
 - latência.
 
-A decisão deve considerar robustez e não apenas bytes.
+Até esse benchmark, TextProto permanece escolhido pela consistência de schema, não por uma alegação de economia comprovada.
 
 ---
 
-## MEDIUM-04 — Prompt duplicado em AGENTS.md e nos documentos de pipeline
+## ✅ RESOLVIDO — MEDIUM-04 — Prompts duplicados
 
-Existem prompts/configurações em:
+Fontes canônicas:
 
 ```text
-docs/AGENTS.md
-docs/pipeline/01_REQUEST_NORMALIZER.md
-docs/pipeline/04_BASH_GENERATOR.md
+request-normalizer
+  docs/pipeline/01_REQUEST_NORMALIZER.md
+
+bash-generator
+  docs/pipeline/04_BASH_GENERATOR.md
 ```
 
-Eles podem divergir.
-
-### Proposta
-
-Definir uma única fonte canônica para prompt.
-
-`AGENTS.md` deve referenciar o prompt da etapa, não duplicá-lo integralmente.
+`AGENTS.md` passa a referenciar os prompts por ID/fonte em vez de duplicar o texto completo.
 
 ---
 
-## MEDIUM-05 — FTS textual não valida contrato
-
-Full Text Search pode localizar semanticamente um candidato que não atende campos ou tipos.
-
-### Proposta
+## ✅ RESOLVIDO — MEDIUM-05 — FTS não valida contrato
 
 Busca em duas fases:
 
 ```text
-1. candidate retrieval
-   FTS / intent
-
-2. deterministic pruning
-   input/output compatibility
-   capability type
-   platform
-   policy
+candidate retrieval
+    intent + FTS
+        |
+        v
+deterministic pruning
+    DataContract
+    CapabilityInterface
+    type/status/policy
+        |
+        v
+LLM candidate view
 ```
 
-Somente depois os poucos candidatos sobreviventes são entregues ao LLM.
+O LLM só recebe candidatos que passaram pela validação estrutural inicial.
 
 ---
 
-## Ordem recomendada de correção
+# Restrição adicional identificada durante a revisão
 
-Antes da implementação principal:
+## ✅ RESOLVIDO — Topologia de streams
 
-1. ~~definir ABI dos resultados~~ — **resolvido: stdout/stdin**;
-2. eliminar dupla fonte de verdade da geração;
-3. formalizar tool loop;
-4. criar tipo/contrato estruturado;
-5. corrigir versionamento;
-6. definir implementação por tipo de capability;
-7. garantir que somente versões ativas sejam pesquisáveis;
-8. definir publicação idempotente;
-9. representar missing information;
-10. separar geração-time e runtime tools.
+A escolha `stdout/stdin` introduz uma restrição natural: existe somente um stdin por processo.
 
-Depois:
+Para a primeira versão:
 
-11. endurecer validação Bash;
-12. limitar candidatos globalmente;
-13. cachear capability details;
-14. benchmark de TextProto;
-15. consolidar prompts.
+- pipelines lineares são nativos;
+- um stream estruturado por chamada;
+- escalares adicionais podem ser argumentos;
+- fan-out exige `tee` explícito;
+- fan-in exige merge/join explícito;
+- o Validator rejeita branching implícito.
+
+Isso mantém a composição previsível sem criar armazenamento temporário oculto.
+
+---
+
+# Ordem atual de implementação
+
+As decisões arquiteturais críticas estão fechadas.
+
+Ordem sugerida para código:
+
+1. gerar código Go a partir de `pipeline.proto`;
+2. implementar validação de `DataContract`;
+3. implementar DAG/result_ref validation;
+4. implementar PostgreSQL `capability` + `capability_version`;
+5. implementar lifecycle/activation;
+6. implementar `search_capabilities` + deterministic pruning;
+7. implementar Tool Orchestrator e generator turn loop;
+8. implementar cache e `capability_usage`;
+9. implementar Capability Publisher idempotente;
+10. implementar assembler Bash determinístico;
+11. integrar `bash -n` e ShellCheck;
+12. implementar escrita atômica de `BashArtifact`;
+13. executar benchmark TextProto x JSON compacto.
