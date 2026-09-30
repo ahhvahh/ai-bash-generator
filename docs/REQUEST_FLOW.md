@@ -2,7 +2,15 @@
 
 Este documento apresenta o pipeline geral do `ai-bash-gen`.
 
-A especificação detalhada da normalização está em [NORMALIZED_REQUEST.md](NORMALIZED_REQUEST.md).
+Cada etapa possui documentação própria:
+
+- [REQUEST_NORMALIZER.md](REQUEST_NORMALIZER.md) — prompt e contrato do normalizador;
+- [NORMALIZED_REQUEST.md](NORMALIZED_REQUEST.md) — grafo de tarefas e referências entre resultados;
+- [SEARCH_CAPABILITIES.md](SEARCH_CAPABILITIES.md) — descoberta determinística no catálogo;
+- [BASH_GENERATOR.md](BASH_GENERATOR.md) — prompt, composição e geração;
+- [PROTOBUF_PIPELINE.md](PROTOBUF_PIPELINE.md) — regras de Protobuf binário e TextProto.
+
+Os contratos canônicos estão em [../proto/ai_bash_gen/v1/pipeline.proto](../proto/ai_bash_gen/v1/pipeline.proto).
 
 ## Pipeline
 
@@ -46,11 +54,15 @@ resposta ao cliente
 
 Um LLM pequeno converte a solicitação do usuário em uma `NormalizedRequest`.
 
+A requisição é decomposta em pequenas tarefas, cada uma com uma saída nomeada. Resultados anteriores podem alimentar tarefas posteriores por `result_ref`.
+
 Ele não gera código e não consulta MCP.
 
 ## 2. Pesquisa
 
-O `ai-bash-gen` consulta o Capability Catalog usando:
+O `ai-bash-gen` procura primeiro uma capability capaz de resolver a requisição completa e também candidatos para as tarefas individuais.
+
+A busca usa:
 
 - intent;
 - canonical instruction;
