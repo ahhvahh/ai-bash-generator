@@ -19,55 +19,87 @@ MEDIUM   afeta desempenho, manutenção ou previsibilidade
 LOW      melhoria de organização/evolução
 ```
 
-## BLOCKER-01 — Não existe ABI para resultados entre funções Bash
+## ✅ RESOLVIDO — BLOCKER-01 — ABI para resultados entre funções Bash
 
-A `NormalizedRequest` define:
+### Decisão
 
-```text
-function A -> resultList -> function B
-```
-
-mas ainda não está definido como `resultList` existe em tempo de execução.
-
-Uma tabela não pode ser passada entre funções Bash apenas pelo conceito `result_ref`.
-
-É necessário definir um ABI de dados.
-
-Exemplos possíveis:
-
-- stdout/stdin;
-- JSON Lines;
-- TSV;
-- NUL-delimited records;
-- arquivo temporário;
-- file descriptor.
-
-### Risco
-
-Duas capabilities podem declarar:
+O canal padrão de composição entre capabilities será o padrão Unix:
 
 ```text
-output: table
-input: table
+capability A
+    |
+    | stdout
+    v
+capability B
+    |
+    | stdin
+    v
+capability C
 ```
 
-e ainda assim serem incompatíveis na prática.
+Uma capability que produz dados deve escrever seu resultado em `stdout`.
 
-### Proposta
+Quando uma capability consumir o resultado de outra, esse conteúdo será fornecido por `stdin`.
 
-Definir um formato canônico inicial.
-
-Exemplo:
+O `result_ref` representa logicamente essa conexão dentro do plano:
 
 ```text
-scalar       -> stdout textual
-path         -> stdout textual, uma linha
-list<path>   -> NUL-delimited
-table        -> JSON Lines
-binary/file  -> path para arquivo
+resultList
+    =
+stdout da capability produtora
+    ->
+stdin da capability consumidora
 ```
 
-O contrato precisa declarar não apenas o tipo lógico, mas a codificação de transporte.
+### Regras do ABI
+
+```text
+stdout   resultado funcional da capability
+stdin    entrada proveniente de uma capability anterior
+stderr   mensagens de diagnóstico e erro
+exit 0   sucesso
+exit !=0 falha
+```
+
+Dados funcionais não devem ser escritos em `stderr`.
+
+Mensagens de log ou diagnóstico não devem ser misturadas ao resultado enviado por `stdout`.
+
+### Exemplo
+
+```bash
+list_files "$path" |
+filter_executables |
+sort_by_size
+```
+
+Conceitualmente:
+
+```text
+list_files
+    |
+    | stdout = resultList
+    v
+filter_executables
+    |
+    | stdout = filteredList
+    v
+sort_by_size
+    |
+    | stdout = sortedList
+    v
+final output
+```
+
+### Compatibilidade do conteúdo
+
+A decisão de transporte está resolvida com `stdout/stdin`.
+
+A representação do conteúdo transportado — por exemplo texto, tabela estruturada ou lista — continua sendo responsabilidade do contrato de entrada/saída da capability e da validação de tipos.
+
+Esse ponto passa a ser tratado pelo **BLOCKER-04 — Sistema de tipos insuficiente para composição**, e não mais como problema de transporte.
+
+**Status:** RESOLVIDO.
 
 ---
 
@@ -747,7 +779,7 @@ Somente depois os poucos candidatos sobreviventes são entregues ao LLM.
 
 Antes da implementação principal:
 
-1. definir ABI dos resultados;
+1. ~~definir ABI dos resultados~~ — **resolvido: stdout/stdin**;
 2. eliminar dupla fonte de verdade da geração;
 3. formalizar tool loop;
 4. criar tipo/contrato estruturado;
