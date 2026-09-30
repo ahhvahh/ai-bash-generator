@@ -67,7 +67,8 @@ Validar:
 - `StreamEncoding`;
 - scalar x stream;
 - argumentos obrigatórios;
-- stdout da produtora compatível com stdin da consumidora.
+- stdout da produtora compatível com stdin da consumidora;
+- checksum de script/application/client de service quando configurado.
 
 ## Versions
 
@@ -80,6 +81,14 @@ checksum
 ```
 
 e deve estar presente em `resolved_capabilities`.
+
+## Integridade de implementação
+
+Para `SCRIPT` e `APPLICATION`, o arquivo apontado pela versão deve existir e seu SHA-256 deve coincidir com o valor registrado.
+
+Para `SERVICE`, o cliente controlado deve existir e seu checksum deve coincidir. A versão do serviço representa o contrato de interface; o servidor atrás do socket pode evoluir somente mantendo esse contrato.
+
+Na primeira versão, uma capability nova produzida diretamente pelo LLM deve ser do tipo `FUNCTION`. Novos scripts, aplicações e serviços exigem fluxo administrativo separado, pois dependem de artefatos externos reais.
 
 ## Segurança
 
