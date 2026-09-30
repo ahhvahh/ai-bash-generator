@@ -84,7 +84,9 @@ Referência de serialização: [Protobuf no pipeline](docs/pipeline/PROTOBUF.md)
 
 Schema canônico: [proto/ai_bash_gen/v1/pipeline.proto](proto/ai_bash_gen/v1/pipeline.proto).
 
-Revisão de arquitetura: [docs/analysis/ARCHITECTURE_REVIEW.md](docs/analysis/ARCHITECTURE_REVIEW.md).
+Revisão de arquitetura atual: [docs/analysis/ARCHITECTURE_REVIEW_V2.md](docs/analysis/ARCHITECTURE_REVIEW_V2.md).
+
+Histórico V1: [docs/analysis/ARCHITECTURE_REVIEW.md](docs/analysis/ARCHITECTURE_REVIEW.md).
 
 Diagramas de sequência: [docs/pipeline/SEQUENCE_DIAGRAMS.md](docs/pipeline/SEQUENCE_DIAGRAMS.md).
 
