@@ -201,6 +201,25 @@ authorize_client_user() {
   ok "usuário $user adicionado ao grupo $group"
   warn "o usuário $user precisa iniciar uma nova sessão para receber o novo grupo."
 }
+load_existing_unit_defaults() {
+  local existing_user existing_group
+  [[ -r "$DEFAULT_UNIT_PATH" ]] || return 0
+
+  existing_user="$(awk -F= '$1 == "User" {print $2; exit}' "$DEFAULT_UNIT_PATH" 2>/dev/null || true)"
+  existing_group="$(awk -F= '$1 == "Group" {print $2; exit}' "$DEFAULT_UNIT_PATH" 2>/dev/null || true)"
+
+  if [[ -n "$existing_user" ]]; then
+    DEFAULT_SERVICE_USER="$existing_user"
+  fi
+  if [[ -n "$existing_group" ]]; then
+    DEFAULT_SERVICE_GROUP="$existing_group"
+  fi
+
+  if [[ -n "$existing_user" || -n "$existing_group" ]]; then
+    info "unit existente detectada: $DEFAULT_UNIT_PATH"
+    info "identidade preservada como padrão: user=$DEFAULT_SERVICE_USER group=$DEFAULT_SERVICE_GROUP"
+  fi
+}
 
 absolute_path() {
   local p="$1"
@@ -495,6 +514,7 @@ main() {
   check_debian_family
   setup_privilege_command
   ensure_debian_packages
+  load_existing_unit_defaults
 
   DEFAULT_BIN_SOURCE="${1:-$(detect_binary_default)}"
 
