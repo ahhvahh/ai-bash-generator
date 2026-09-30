@@ -43,15 +43,15 @@ sequenceDiagram
     C-->>P: Composite candidates + task candidates
 
     P->>G: Generation turn + summarized candidates
-    G-->>P: Request get_capability(compositeId)
+    G-->>P: GeneratorToolRequests(get_capability)
 
     P->>T: get_capability(compositeId)
     T->>C: Load active immutable version
-    C->>C: Append capability_usage(version_id)
+    C->>C: Append capability_usage(version_id, request_id)
     C-->>T: CapabilityDefinition
     T-->>P: CapabilityDefinition
 
-    P->>G: Continue turn with definition
+    P->>G: GeneratorTurnRequest(tool response)
     G-->>P: Final GenerationPlan
 
     P->>V: Validate plan + definitions
@@ -90,13 +90,13 @@ sequenceDiagram
     P->>G: NormalizedRequest + candidate sets
 
     loop Only for selected candidates
-        G-->>P: get_capability(id)
+        G-->>P: GeneratorToolRequests(get_capability)
         P->>T: Resolve detail
         T->>C: Load active version
         C->>C: Append usage once per request/version
         C-->>T: CapabilityDefinition
         T-->>P: CapabilityDefinition
-        P->>G: Continue with detail
+        P->>G: GeneratorTurnRequest(tool response)
     end
 
     G-->>P: GenerationPlan A -> B -> C
@@ -132,19 +132,19 @@ sequenceDiagram
     C-->>P: A found, B missing, C found
 
     P->>G: Request + candidates
-    G-->>P: get_capability(A)
+    G-->>P: GeneratorToolRequests(get_capability A)
     P->>T: Resolve A
     T->>C: Load A version
     C-->>T: A definition
     T-->>P: A definition
-    P->>G: A definition
+    P->>G: GeneratorTurnRequest(A response)
 
-    G-->>P: get_capability(C)
+    G-->>P: GeneratorToolRequests(get_capability C)
     P->>T: Resolve C
     T->>C: Load C version
     C-->>T: C definition
     T-->>P: C definition
-    P->>G: C definition
+    P->>G: GeneratorTurnRequest(C response)
 
     G-->>P: Plan using A + generated B + C
 
@@ -221,7 +221,7 @@ sequenceDiagram
 
     Client->>P: "copie os arquivos para o destino"
     P->>N: UserRequest
-    N-->>P: NormalizationResult(MISSING_INFORMATION, destination)
+    N-->>P: NormalizedRequest(status=MISSING_INFORMATION)
 
     P->>P: Validate normalization
 
@@ -247,7 +247,7 @@ sequenceDiagram
     participant V as Validator
     participant O as Bash Output
 
-    P->>G: GenerationRequest
+    P->>G: GeneratorTurnRequest
     G-->>P: GenerationPlan
     P->>V: Validate
     V-->>P: Invalid + structured issues
@@ -291,20 +291,20 @@ sequenceDiagram
     N-->>P: NormalizedRequest
 
     P->>G: Request + permitted generation-time tools
-    G-->>P: Tool request: search_emails
+    G-->>P: GeneratorToolRequest(generation_time_mcp: search_emails)
 
     P->>T: Authorize tool request
     T->>Mail: search_emails
     Mail-->>T: Summaries
     T-->>P: Sanitized results
-    P->>G: Continue with results
+    P->>G: GeneratorTurnRequest(McpToolResult)
 
-    G-->>P: Tool request: get_email(message_id)
+    G-->>P: GeneratorToolRequest(generation_time_mcp: get_email)
     P->>T: Authorize
     T->>Mail: get_email
     Mail-->>T: Content
     T-->>P: Sanitized content
-    P->>G: Continue
+    P->>G: GeneratorTurnRequest(McpToolResult)
 
     G-->>P: Final generation plan
     P->>V: Validate
@@ -366,4 +366,28 @@ sequenceDiagram
     Bash-->>User: Requested output
 ```
 
-Este fluxo depende diretamente da definição do ABI descrito como BLOCKER-01.
+O ABI deste fluxo está definido como `stdout -> stdin`. O tipo e a codificação do stream são validados por `DataContract`.
+
+## Regra de topologia de streams
+
+O ABI Unix resolve o transporte, mas cada processo possui um único `stdin`.
+
+Na primeira versão, um stream linear é suportado diretamente:
+
+```text
+A | B | C
+```
+
+Fan-out ou fan-in não são montados implicitamente:
+
+```text
+      +--> B
+A ----+
+      +--> C
+
+B ----+
+      +--> D
+C ----+
+```
+
+Esses casos exigem uma capability explícita de `tee`, merge/join ou materialização intermediária. O Validator rejeita um plano que tente criar essa topologia sem uma operação explícita.
