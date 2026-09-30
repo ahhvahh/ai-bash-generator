@@ -622,6 +622,45 @@ Isso mantém a composição previsível sem criar armazenamento temporário ocul
 
 ---
 
+# Ajustes adicionais encontrados na revisão
+
+## ✅ RESOLVIDO — Identidade interna da requisição
+
+`request_id` é gerado pelo `ai-bash-gen` depois que a requisição é aceita.
+
+Ele não é controlado pelo cliente.
+
+Isso evita colisões deliberadas ou acidentais em:
+
+- cache de capability;
+- `capability_usage`;
+- idempotência de publicação;
+- correlação de logs.
+
+`UserRequest` contém somente o conteúdo funcional enviado pelo cliente.
+
+---
+
+## ✅ RESOLVIDO — Mutabilidade de scripts/aplicações externas
+
+Uma versão imutável não pode depender apenas de um path que pode mudar.
+
+Foram adicionados checksums esperados:
+
+```text
+ScriptImplementation.expected_sha256
+ApplicationImplementation.expected_sha256
+ServiceImplementation.client_expected_sha256
+```
+
+O Validator confere o conteúdo atual antes de materializar o plano.
+
+Para `SERVICE`, a versão representa o contrato e o cliente controlado. O servidor pode evoluir mantendo a interface versionada.
+
+Na primeira versão, o LLM gera novas capabilities somente do tipo `FUNCTION`. Novos scripts, aplicações e serviços passam por cadastro administrativo.
+
+---
+
 # Ordem atual de implementação
 
 As decisões arquiteturais críticas estão fechadas.
