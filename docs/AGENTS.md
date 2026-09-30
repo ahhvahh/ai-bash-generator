@@ -172,7 +172,7 @@ id: bash-generator
 name: Gerador de Scripts Bash
 
 description: >
-  Gera scripts Bash a partir de uma TaskSpec e pode consultar
+  Gera scripts Bash a partir de uma NormalizedRequest e pode consultar
   MCPs autorizados para localizar capacidades reutilizáveis ou
   obter informações necessárias.
 
@@ -193,7 +193,7 @@ runtime:
 
 input:
   type: json_schema
-  schema: task-spec
+  schema: normalized-request
 
 output:
   type: json_schema
@@ -208,11 +208,28 @@ tools:
 prompt: |
   Você é um agente especializado em geração de scripts Bash.
 
-  Sua entrada será uma TaskSpec validada.
+  Sua entrada será uma NormalizedRequest validada.
 
   Antes de implementar lógica complexa, consulte o MCP
   capability-catalog para procurar funções, scripts ou aplicações
   reutilizáveis.
+
+  Compare os candidatos usando objetivo, entrada e saída.
+
+  Se nenhuma capability atender adequadamente à NormalizedRequest,
+  gere uma nova função reutilizável e parametrizada.
+
+  Não fixe na função reutilizável valores específicos da requisição.
+  Separe a capability genérica da invocação atual.
+
+  A nova capability deve possuir:
+  - description;
+  - match_instruction;
+  - input_description;
+  - output_description;
+  - contratos detalhados de entrada e saída;
+  - implementação;
+  - dependências.
 
   Consulte o MCP google-mail somente quando a solicitação do usuário
   depender explicitamente de conteúdo de e-mail.
@@ -482,17 +499,17 @@ O `ai-bash-gen` não deve baixar modelos automaticamente durante a execução no
 
 ---
 
-## 6. Agente inicial: request-organizer
+## 6. Agente inicial: request-normalizer
 
 ID:
 
 ```text
-request-organizer
+request-normalizer
 ```
 
 Responsabilidade:
 
-transformar linguagem natural em `TaskSpec`.
+transformar linguagem natural em `NormalizedRequest`.
 
 Esse agente não precisa consultar MCPs na primeira versão.
 
@@ -501,7 +518,7 @@ Exemplo:
 ```yaml
 version: 1
 
-id: request-organizer
+id: request-normalizer
 
 name: Organizador de Requisições
 
@@ -529,14 +546,14 @@ input:
 
 output:
   type: json_schema
-  schema: task-spec
+  schema: normalized-request
 
 tools:
   mcp:
     allowed: []
 
 prompt: |
-  Transforme a solicitação do usuário em uma TaskSpec.
+  Transforme a solicitação do usuário em uma NormalizedRequest.
 
   Preserve requisitos informados.
   Não invente requisitos.
@@ -556,7 +573,7 @@ bash-generator
 
 Responsabilidade:
 
-- receber uma `TaskSpec`;
+- receber uma `NormalizedRequest`;
 - decidir se MCPs podem melhorar a resposta;
 - pesquisar capacidades reutilizáveis;
 - consultar e-mails apenas quando necessário;
@@ -566,7 +583,7 @@ Responsabilidade:
 ### Ordem recomendada
 
 ```text
-TaskSpec
+NormalizedRequest
    |
    v
 analisar requisitos
@@ -604,7 +621,7 @@ Regras:
 Consultar quando:
 
 - uma operação é suficientemente genérica para provavelmente já existir;
-- a TaskSpec exige integração com aplicação local;
+- a NormalizedRequest exige integração com aplicação local;
 - uma função complexa pode ser reutilizada;
 - o script depende de comportamento já padronizado.
 
@@ -615,7 +632,7 @@ Não consultar repetidamente a mesma capability durante a mesma requisição sem
 Consultar somente quando:
 
 - o usuário pedir informação existente em e-mail;
-- a TaskSpec indicar e-mail como fonte;
+- a NormalizedRequest indicar e-mail como fonte;
 - o script necessitar de dados concretos presentes em uma mensagem.
 
 Nunca utilizar Gmail para enriquecer genericamente uma resposta.
@@ -647,7 +664,11 @@ Formato conceitual:
 }
 ```
 
-O campo `capabilities_used` será usado pela aplicação para telemetria.
+O campo `capabilities_used` registra quais capacidades foram incorporadas ao resultado.
+
+A telemetria de acesso ao catálogo ocorre quando o agente chama `get_capability`, que gera um registro append-only no banco.
+
+Quando uma nova função reutilizável for criada, o artefato poderá incluir também uma `generated_capability`, que será validada e deduplicada antes de entrar no catálogo.
 
 O campo `sources_used` permite auditoria sem copiar conteúdo sensível para logs.
 
@@ -673,7 +694,7 @@ bash-generator
        capability-catalog
        google-mail
 
-request-organizer
+request-normalizer
     allowed:
        nenhum
 ```
@@ -734,7 +755,7 @@ Exemplos válidos:
 
 ```text
 bash-generator
-request-organizer
+request-normalizer
 log-analyzer
 ```
 
@@ -796,8 +817,8 @@ pipelines:
 
     steps:
 
-      - agent: request-organizer
-        output_schema: task-spec
+      - agent: request-normalizer
+        output_schema: normalized-request
 
       - agent: bash-generator
         input: previous
@@ -809,10 +830,10 @@ Fluxo:
 usuário
   |
   v
-request-organizer
+request-normalizer
   |
   v
-TaskSpec
+NormalizedRequest
   |
   v
 bash-generator
