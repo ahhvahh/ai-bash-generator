@@ -10,6 +10,7 @@ SOURCE_PACKAGE="./cmd/ai-bash-gen"
 MODULE_PATH="github.com/ahhvahh/ai-bash-generator"
 INSTALL_SCRIPT="$ROOT/install-binary.sh"
 TEST_SCRIPT="$ROOT/test-binary.sh"
+INSTALLER_TEST_SCRIPT="$ROOT/test-installer.sh"
 GENERATION_TEST_SCRIPT="$ROOT/test-generation.sh"
 GENERATION_TEST_NAME="ai-bash-gen-generation-test"
 GENERATION_TEST_PACKAGE="./cmd/ai-bash-gen-generation-test"
@@ -52,6 +53,7 @@ Cada build aprovado gera em bin/<arquitetura>/:
   ai-bash-gen
   install-binary.sh
   test-binary.sh
+  test-installer.sh
   ai-bash-gen-generation-test
   test-generation.sh
 
@@ -124,7 +126,7 @@ require_go() {
 
 require_distribution_scripts() {
   local script
-  for script in "$INSTALL_SCRIPT" "$TEST_SCRIPT" "$GENERATION_TEST_SCRIPT"; do
+  for script in "$INSTALL_SCRIPT" "$TEST_SCRIPT" "$INSTALLER_TEST_SCRIPT" "$GENERATION_TEST_SCRIPT"; do
     [[ -f "$script" ]] || {
       echo "[ERRO] arquivo obrigatório não encontrado: $script" >&2
       exit 1
@@ -142,6 +144,8 @@ run_tests() {
     cd "$GO_ROOT"
     go test ./...
   )
+  echo '[tests] test-installer.sh'
+  "$INSTALLER_TEST_SCRIPT"
 }
 
 build_go() {
@@ -216,6 +220,7 @@ package_distribution_files() {
   local output_dir="$BIN/$arch"
   install -m 0755 -- "$INSTALL_SCRIPT" "$output_dir/install-binary.sh"
   install -m 0755 -- "$TEST_SCRIPT" "$output_dir/test-binary.sh"
+  install -m 0755 -- "$INSTALLER_TEST_SCRIPT" "$output_dir/test-installer.sh"
   install -m 0755 -- "$GENERATION_TEST_SCRIPT" "$output_dir/test-generation.sh"
   echo "[package] scripts adicionados em ${output_dir#$ROOT/}"
 }
