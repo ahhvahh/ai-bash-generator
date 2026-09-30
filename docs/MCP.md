@@ -226,230 +226,280 @@ Uma capacidade poderá entregar:
 
 ### Banco de dados
 
-Banco:
+O catálogo utilizará PostgreSQL.
+
+A prioridade dessa estrutura é manter a consulta de `search_capabilities` sobre a menor quantidade possível de dados. Para isso, separar os dados em três grupos:
+
+1. **índice de pesquisa**: somente os campos necessários para encontrar e apresentar uma capacidade;
+2. **detalhes da capacidade**: carregados apenas depois que o agente escolher um `id`;
+3. **estatísticas de uso**: mantidas fora da tabela de pesquisa para evitar atualizações frequentes nela.
+
+Fluxo esperado:
 
 ```text
-/var/lib/ai-bash-gen/catalog/capabilities.db
+search_capabilities
+        |
+        v
+capability
+(id, type, description, match_instruction)
+        |
+        v
+LLM escolhe um id
+        |
+        v
+get_capability
+        |
+        v
+capability_detail
 ```
 
-A tabela principal deve armazenar o contrato da capacidade e também texto preparado para pesquisa.
+#### Conexão
 
-Estrutura recomendada:
+Para uma instalação local, preferir PostgreSQL através de Unix Domain Socket.
+
+Exemplo de configuração:
+
+```yaml
+database:
+  driver: postgres
+  host: /var/run/postgresql
+  database: ai_bash_gen
+  user: ai_bash_gen
+  sslmode: disable
+```
+
+A aplicação não deve depender de uma porta PostgreSQL exposta externamente.
+
+### Tabela de pesquisa
+
+A tabela `capability` deve permanecer pequena.
 
 ```sql
-CREATE TABLE capabilities (
-    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE capability (
+    id                INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
 
-    capability_key      TEXT NOT NULL,
-    version             INTEGER NOT NULL DEFAULT 1,
+    capability_key    TEXT NOT NULL UNIQUE,
 
-    type                TEXT NOT NULL
-                        CHECK (type IN ('function','script','application','service')),
+    type              SMALLINT NOT NULL,
 
-    name                TEXT NOT NULL,
+    description       TEXT NOT NULL,
 
-    description_en      TEXT NOT NULL,
-    match_instruction_en TEXT NOT NULL,
-    intent              TEXT,
+    match_instruction TEXT NOT NULL,
 
-    language            TEXT,
-    platform_json       TEXT NOT NULL DEFAULT '[]',
-    keywords_json       TEXT NOT NULL DEFAULT '[]',
+    intent            TEXT,
 
-    input_json          TEXT NOT NULL DEFAULT '[]',
-    processing_json     TEXT NOT NULL DEFAULT '[]',
-    output_json         TEXT NOT NULL DEFAULT '[]',
-
-    source_code         TEXT,
-    address             TEXT,
-    invocation_json     TEXT,
-
-    dependencies_json   TEXT NOT NULL DEFAULT '[]',
-
-    risk_level          TEXT NOT NULL DEFAULT 'read_only'
-                        CHECK (risk_level IN (
-                            'read_only',
-                            'low',
-                            'medium',
-                            'high'
-                        )),
-
-    complexity_score    INTEGER NOT NULL DEFAULT 1
-                        CHECK (complexity_score BETWEEN 1 AND 5),
-
-    enabled             INTEGER NOT NULL DEFAULT 1
-                        CHECK (enabled IN (0,1)),
-
-    usage_count         INTEGER NOT NULL DEFAULT 0,
-    last_used_at        TEXT,
-
-    checksum            TEXT,
-
-    created_at          TEXT NOT NULL,
-    updated_at          TEXT NOT NULL,
-
-    UNIQUE (capability_key, version)
+    enabled           BOOLEAN NOT NULL DEFAULT TRUE
 );
 ```
 
-### Função dos principais campos
+Mapeamento sugerido para `type`:
 
-| Campo | Finalidade |
-|---|---|
-| `capability_key` | Identificador estável, por exemplo `list-subdirectories`. |
-| `type` | Diferencia função, script, aplicação ou serviço. |
-| `description_en` | Descrição humana objetiva da capacidade. |
-| `match_instruction_en` | Frase canônica usada para aproximar a solicitação normalizada da capacidade. |
-| `intent` | Intenção curta e estável, como `list_subdirectories`. |
-| `keywords_json` | Sinônimos e termos úteis à pesquisa. |
-| `input_json` | Contrato das entradas. |
-| `processing_json` | Etapas conceituais realizadas pela capacidade. |
-| `output_json` | Contrato da saída. |
-| `source_code` | Código quando a capacidade for uma função incorporável. |
-| `address` | Caminho ou endereço quando for script, aplicação ou serviço. |
-| `invocation_json` | Forma segura de invocação e argumentos suportados. |
-| `risk_level` | Indica o impacto esperado da capacidade. |
-| `complexity_score` | Complexidade de 1 a 5. |
-| `usage_count` | Contador agregado de uso efetivo. |
-
-### Por que entradas, processamento e saídas ficam em JSON
-
-A estrutura varia bastante entre capacidades.
-
-Uma função pode receber somente um caminho:
-
-```json
-[
-  {
-    "name": "base_path",
-    "type": "path",
-    "required": true
-  }
-]
+```text
+1 = function
+2 = script
+3 = application
+4 = service
 ```
 
-Outra aplicação pode receber vários parâmetros.
+O uso de `SMALLINT` evita repetir strings como `function`, `script` e `application` em todas as linhas. O MCP converte esse valor para texto antes de responder ao agente.
 
-Usar JSON permite evoluir o contrato sem criar uma nova coluna para cada argumento.
+A consulta de `search_capabilities` deve selecionar somente:
 
-O Go deve validar esses campos antes de persistir os dados.
+```sql
+SELECT
+    capability_key AS id,
+    type,
+    description,
+    match_instruction
+FROM capability
+WHERE enabled = TRUE;
+```
 
-### Busca textual
+A resposta MCP continua mínima:
 
-Na primeira versão, evitar embeddings.
+```json
+{
+  "results": [
+    {
+      "id": "list-subdirectories",
+      "type": "function",
+      "description": "List immediate child directories of a given path.",
+      "match_instruction": "List subdirectories in a directory."
+    }
+  ]
+}
+```
 
-Criar um índice SQLite FTS5 contendo principalmente:
+Não incluir nessa consulta:
 
-- `name`;
-- `description_en`;
-- `match_instruction_en`;
-- `intent`;
-- keywords normalizadas.
+- código-fonte;
+- endereço;
+- argumentos;
+- dependências;
+- contador de uso;
+- complexidade;
+- timestamps;
+- contratos de entrada e saída.
+
+### Pesquisa textual
+
+Como todas as instruções internas são normalizadas para inglês, utilizar o mecanismo nativo de Full Text Search do PostgreSQL.
+
+Criar índice GIN por expressão sem adicionar uma coluna `tsvector` à tabela:
+
+```sql
+CREATE INDEX ix_capability_search
+ON capability
+USING GIN (
+    to_tsvector(
+        'english',
+        coalesce(match_instruction, '') || ' ' ||
+        coalesce(description, '')
+    )
+);
+```
+
+Para intenção exata:
+
+```sql
+CREATE INDEX ix_capability_intent
+ON capability (intent)
+WHERE enabled = TRUE;
+```
+
+A pesquisa deve priorizar:
+
+1. correspondência exata de `intent`;
+2. correspondência full-text de `match_instruction`;
+3. correspondência full-text de `description`.
 
 Exemplo conceitual:
 
 ```sql
-CREATE VIRTUAL TABLE capabilities_fts USING fts5(
-    capability_key UNINDEXED,
-    name,
-    description_en,
-    match_instruction_en,
-    intent,
-    keywords
-);
-```
-
-A busca poderá priorizar nesta ordem:
-
-1. `intent` exato;
-2. `match_instruction_en`;
-3. nome;
-4. palavras-chave;
-5. descrição.
-
-Assim, a requisição:
-
-```text
-List subdirectories in ~/ambiente.
-```
-
-pode ser comparada com:
-
-```text
-List subdirectories in a directory.
-```
-
-sem depender de um modelo de embeddings.
-
-### Exemplo de registro
-
-```sql
-INSERT INTO capabilities (
-    capability_key,
-    version,
+SELECT
+    capability_key AS id,
     type,
-    name,
-    description_en,
-    match_instruction_en,
-    intent,
-    language,
-    platform_json,
-    keywords_json,
-    input_json,
-    processing_json,
-    output_json,
-    source_code,
-    dependencies_json,
-    risk_level,
-    complexity_score,
-    created_at,
-    updated_at
-)
-VALUES (
-    'list-subdirectories',
-    1,
-    'function',
-    'List Subdirectories',
-    'List immediate child directories of a given path.',
-    'List subdirectories in a directory.',
-    'list_subdirectories',
-    'bash',
-    '["linux","debian"]',
-    '["list directory","subdirectory","folder","find directories"]',
-    '[{"name":"base_path","type":"path","required":true}]',
-    '["Enumerate immediate child entries.","Keep directories only."]',
-    '[{"name":"directories","type":"list<path>"}]',
-    'list_subdirectories() { find "$1" -mindepth 1 -maxdepth 1 -type d -print; }',
-    '["find"]',
-    'read_only',
-    1,
-    CURRENT_TIMESTAMP,
-    CURRENT_TIMESTAMP
+    description,
+    match_instruction
+FROM capability
+WHERE
+    enabled = TRUE
+    AND (
+        intent = $1
+        OR
+        to_tsvector(
+            'english',
+            coalesce(match_instruction, '') || ' ' ||
+            coalesce(description, '')
+        ) @@ websearch_to_tsquery('english', $2)
+    )
+LIMIT $3;
+```
+
+GIN é o tipo de índice preferido pelo PostgreSQL para Full Text Search em consultas frequentes.
+
+### Tabela de detalhes
+
+Os dados maiores ficam em uma tabela separada e não participam de `search_capabilities`.
+
+```sql
+CREATE TABLE capability_detail (
+    capability_id     INTEGER PRIMARY KEY
+                      REFERENCES capability(id)
+                      ON DELETE CASCADE,
+
+    version           SMALLINT NOT NULL DEFAULT 1,
+
+    language          TEXT,
+
+    input_contract    JSONB,
+    processing        JSONB,
+    output_contract   JSONB,
+
+    source_code       TEXT,
+    address           TEXT,
+    invocation        JSONB,
+    dependencies      JSONB,
+
+    risk_level        SMALLINT NOT NULL DEFAULT 0,
+    complexity_score  SMALLINT NOT NULL DEFAULT 1,
+
+    checksum          TEXT
 );
 ```
 
-### Telemetria
+Mapeamento sugerido para `risk_level`:
 
-`usage_count` é apenas uma métrica agregada para consulta rápida.
+```text
+0 = read_only
+1 = low
+2 = medium
+3 = high
+```
 
-Manter também histórico individual em tabela separada:
+`get_capability` deve localizar primeiro o ID interno pela chave e então buscar o detalhe pela chave primária.
+
+Exemplo:
 
 ```sql
-CREATE TABLE capability_usage (
-    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+SELECT
+    c.capability_key,
+    c.type,
+    c.description,
+    c.match_instruction,
+    d.version,
+    d.language,
+    d.input_contract,
+    d.processing,
+    d.output_contract,
+    d.source_code,
+    d.address,
+    d.invocation,
+    d.dependencies,
+    d.risk_level,
+    d.complexity_score,
+    d.checksum
+FROM capability c
+JOIN capability_detail d
+  ON d.capability_id = c.id
+WHERE c.capability_key = $1
+  AND c.enabled = TRUE;
+```
 
-    capability_id       INTEGER NOT NULL,
-    capability_version  INTEGER NOT NULL,
+Campos grandes, como `source_code`, permanecem fora da tabela de pesquisa. O PostgreSQL também pode comprimir ou mover valores grandes para armazenamento TOAST automaticamente, mantendo a linha principal menor.
 
-    request_id          TEXT NOT NULL,
-    agent_id            TEXT NOT NULL,
-    pipeline_id         TEXT,
+### Estatísticas de uso
 
-    used_at             TEXT NOT NULL,
+Não manter `usage_count` na tabela `capability`.
 
-    FOREIGN KEY (capability_id)
-        REFERENCES capabilities(id)
+O contador muda com frequência e não participa da pesquisa MCP. Mantê-lo separado evita alterar constantemente as linhas utilizadas pelo índice de pesquisa.
+
+```sql
+CREATE TABLE capability_stats (
+    capability_id INTEGER PRIMARY KEY
+                  REFERENCES capability(id)
+                  ON DELETE CASCADE,
+
+    usage_count   BIGINT NOT NULL DEFAULT 0,
+
+    last_used_at  TIMESTAMPTZ
 );
+```
+
+Atualização:
+
+```sql
+INSERT INTO capability_stats (
+    capability_id,
+    usage_count,
+    last_used_at
+)
+VALUES ($1, 1, now())
+
+ON CONFLICT (capability_id)
+DO UPDATE SET
+    usage_count = capability_stats.usage_count + 1,
+    last_used_at = EXCLUDED.last_used_at;
 ```
 
 Uma capacidade é considerada utilizada somente quando:
@@ -459,24 +509,48 @@ Uma capacidade é considerada utilizada somente quando:
 3. o artefato foi validado;
 4. a geração terminou com sucesso.
 
-Consultar uma capacidade pelo MCP não incrementa `usage_count`.
+Consultar uma capacidade pelo MCP não incrementa o contador.
 
-Depois do uso efetivo, o `ai-bash-gen` deverá:
+### Histórico opcional
 
-```text
-insert capability_usage
-        |
-        v
-increment capabilities.usage_count
-        |
-        v
-update last_used_at
-        |
-        v
-evaluate promotion policy
+O projeto precisa inicialmente do contador agregado, não de um registro permanente de cada consulta.
+
+Caso seja necessário auditar usos individuais no futuro, criar uma tabela separada e opcional:
+
+```sql
+CREATE TABLE capability_usage_event (
+    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+    capability_id  INTEGER NOT NULL
+                   REFERENCES capability(id),
+
+    request_id     TEXT NOT NULL,
+
+    agent_id       TEXT NOT NULL,
+
+    used_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 ```
 
-Capacidades muito utilizadas ou complexas poderão gerar uma iniciativa para serem transformadas em aplicação ou script dedicado.
+Essa tabela não deve participar das consultas do MCP e poderá possuir política de retenção.
+
+### Estrutura final
+
+```text
+capability
+    dados pequenos usados na pesquisa
+        |
+        +---- capability_detail
+        |       dados completos, carregados sob demanda
+        |
+        +---- capability_stats
+                contador e último uso
+
+capability_usage_event
+    opcional para auditoria
+```
+
+Essa separação mantém a operação mais frequente, `search_capabilities`, limitada a uma tabela pequena e indexada.
 
 ## 2. Google Mail MCP
 
