@@ -90,7 +90,7 @@ Os servidores MCP fornecem capacidades consultivas aos agentes.
 
 A primeira versão prevê dois MCPs:
 
-1. **Function Catalog MCP** — pesquisa funções, scripts e aplicações reutilizáveis.
+1. **Capability Catalog MCP** — pesquisa funções, scripts e aplicações reutilizáveis.
 2. **Google Mail MCP** — pesquisa e leitura controlada de mensagens de uma caixa Gmail autorizada.
 
 A documentação está em [docs/MCP.md](docs/MCP.md).
@@ -147,19 +147,22 @@ bash-generator
         +--> ou gera nova capability parametrizada
         |
         v
-validação
+validation
         |
         +--> capability nova válida retorna ao catálogo
         |
         v
-script Bash
+bash-output
+        |
+        v
+arquivo .sh
 ```
 
 A aplicação transforma a solicitação em uma representação técnica curta em inglês, pesquisa capacidades reutilizáveis e usa o gerador para escolher uma existente ou produzir uma nova função parametrizada.
 
 ## Catálogo de funções
 
-O Function Catalog armazenará funções reutilizáveis, incluindo:
+O Capability Catalog armazenará funções reutilizáveis, incluindo:
 
 - identificador;
 - versão;
@@ -259,7 +262,7 @@ Próximas etapas:
 - implementar o modo `--configure`;
 - implementar o daemon e protocolo Protobuf;
 - implementar gerenciamento de agentes;
-- implementar Function Catalog MCP;
+- implementar Capability Catalog MCP;
 - implementar Google Mail MCP;
 - integrar `llama.cpp`;
 - adicionar testes de segurança e integração.
