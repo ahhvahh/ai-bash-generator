@@ -8,6 +8,8 @@ BIN="$ROOT/bin"
 PROJECT_NAME="ai-bash-gen"
 SOURCE_PACKAGE="./cmd/ai-bash-gen"
 MODULE_PATH="github.com/ahhvahh/ai-bash-generator"
+INSTALL_SCRIPT="$ROOT/install-binary.sh"
+TEST_SCRIPT="$ROOT/test-binary.sh"
 
 SUPPORTED_ARCHITECTURES=(
   amd64
@@ -43,46 +45,44 @@ Arquiteturas suportadas:
   ppc64le
   s390x
 
-O build gera somente em:
-  bin/<arquitetura>/ai-bash-gen
+Cada build aprovado gera em bin/<arquitetura>/:
+  ai-bash-gen
+  install-binary.sh
+  test-binary.sh
 
+O test-binary.sh é executado automaticamente contra o binário final.
 Sem argumento o build é recusado.
 TXT
 }
 
 list_targets() {
   local arch toolchain
-
   for arch in "${SUPPORTED_ARCHITECTURES[@]}"; do
     toolchain="linux/$arch"
     if [[ "$arch" == "arm" ]]; then
       toolchain="linux/arm GOARM=7"
     fi
-
     printf 'TARGET|%s|ready|bin/%s/%s|%s\n' \
       "$arch" "$arch" "$PROJECT_NAME" "$toolchain"
   done
 }
 
 show_versions() {
-  cat <<EOF
+  cat <<EOF2
 $PROJECT_NAME - targets suportados
 
 Código-fonte: src/go
 Entrypoint:  src/go/cmd/ai-bash-gen
 
 Targets:
-EOF
-
+EOF2
   list_targets
-
-  cat <<'EOF'
+  cat <<'EOF2'
 TARGET|riscv32|unsupported|-|-
 TARGET|xtensa|unsupported|-|-
 
 Toolchain:
-EOF
-
+EOF2
   if command -v go >/dev/null 2>&1; then
     printf '  Go: '
     go version
@@ -99,12 +99,10 @@ clean_bin() {
 cleanup_on_exit() {
   local rc=$?
   trap - EXIT
-
   if [[ $rc -ne 0 ]]; then
     rm -rf -- "$BIN"
     mkdir -p -- "$BIN"
   fi
-
   exit "$rc"
 }
 
@@ -113,11 +111,24 @@ require_go() {
     echo '[ERRO] Go não encontrado no PATH.' >&2
     exit 1
   }
-
-  if [[ ! -f "$GO_ROOT/go.mod" ]]; then
+  [[ -f "$GO_ROOT/go.mod" ]] || {
     echo "[ERRO] go.mod não encontrado em: $GO_ROOT" >&2
     exit 1
-  fi
+  }
+}
+
+require_distribution_scripts() {
+  local script
+  for script in "$INSTALL_SCRIPT" "$TEST_SCRIPT"; do
+    [[ -f "$script" ]] || {
+      echo "[ERRO] arquivo obrigatório não encontrado: $script" >&2
+      exit 1
+    }
+    bash -n "$script" || {
+      echo "[ERRO] script inválido: $script" >&2
+      exit 1
+    }
+  done
 }
 
 run_tests() {
@@ -135,14 +146,11 @@ build_go() {
   local commit version ldflags
 
   mkdir -p -- "$output_dir"
-
   commit="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
   version="$(git -C "$ROOT" describe --tags --always --dirty 2>/dev/null || printf 'dev')"
-
   ldflags="-s -w -X ${MODULE_PATH}/internal/buildinfo.Version=${version} -X ${MODULE_PATH}/internal/buildinfo.Commit=${commit}"
 
   echo "[build] linux/$arch -> ${output_file#$ROOT/}"
-
   case "$arch" in
     arm)
       (
@@ -168,14 +176,27 @@ build_go() {
   esac
 }
 
-is_supported_architecture() {
-  local candidate="$1"
-  local arch
+package_distribution_files() {
+  local arch="$1"
+  local output_dir="$BIN/$arch"
+  install -m 0755 -- "$INSTALL_SCRIPT" "$output_dir/install-binary.sh"
+  install -m 0755 -- "$TEST_SCRIPT" "$output_dir/test-binary.sh"
+  echo "[package] scripts adicionados em ${output_dir#$ROOT/}"
+}
 
+run_binary_tests() {
+  local arch="$1"
+  local output_dir="$BIN/$arch"
+  local output_file="$output_dir/$PROJECT_NAME"
+  echo "[tests] ${output_dir#$ROOT/}/test-binary.sh ${output_file#$ROOT/}"
+  "$output_dir/test-binary.sh" "$output_file"
+}
+
+is_supported_architecture() {
+  local candidate="$1" arch
   for arch in "${SUPPORTED_ARCHITECTURES[@]}"; do
     [[ "$candidate" == "$arch" ]] && return 0
   done
-
   return 1
 }
 
@@ -194,23 +215,10 @@ shift
 }
 
 case "$TARGET" in
-  -h|--help|help)
-    usage
-    exit 0
-    ;;
-  --versions|versions)
-    show_versions
-    exit 0
-    ;;
-  --list-targets)
-    list_targets
-    exit 0
-    ;;
-  clean)
-    clean_bin
-    echo '[OK] bin/ limpo.'
-    exit 0
-    ;;
+  -h|--help|help) usage; exit 0 ;;
+  --versions|versions) show_versions; exit 0 ;;
+  --list-targets) list_targets; exit 0 ;;
+  clean) clean_bin; echo '[OK] bin/ limpo.'; exit 0 ;;
 esac
 
 if ! is_supported_architecture "$TARGET"; then
@@ -219,10 +227,13 @@ if ! is_supported_architecture "$TARGET"; then
   exit 2
 fi
 
-require_go
+# Limpa antes de validar pré-requisitos para nunca preservar artefato antigo
+# em uma tentativa de build que falhe.
 clean_bin
 trap cleanup_on_exit EXIT
 
+require_go
+require_distribution_scripts
 run_tests
 build_go "$TARGET"
 
@@ -231,6 +242,9 @@ if [[ ! -s "$BIN/$TARGET/$PROJECT_NAME" ]]; then
   exit 1
 fi
 
+package_distribution_files "$TARGET"
+run_binary_tests "$TARGET"
+
 trap - EXIT
-echo '[OK] build concluído.'
+echo '[OK] build e testes concluídos.'
 find "$BIN/$TARGET" -mindepth 1 -maxdepth 1 -print | sort
