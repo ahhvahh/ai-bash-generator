@@ -276,11 +276,32 @@ message ToolError {
   string message = 2;
 }
 
+message ToolPayload {
+  // Fully-qualified protobuf message name for the MCP-specific payload.
+  string schema = 1;
+
+  // TextProto is used only at the LLM boundary.
+  string textproto = 2;
+}
+
+message McpToolRequest {
+  string server = 1;
+  string tool = 2;
+  ToolPayload arguments = 3;
+}
+
+message McpToolResult {
+  string server = 1;
+  string tool = 2;
+  ToolPayload result = 3;
+}
+
 message GeneratorToolRequest {
   string call_id = 1;
 
   oneof request {
     CapabilityDetailRequest get_capability = 2;
+    McpToolRequest generation_time_mcp = 3;
   }
 }
 
@@ -294,6 +315,7 @@ message GeneratorToolResponse {
   oneof response {
     CapabilityDefinition capability = 2;
     ToolError error = 3;
+    McpToolResult generation_time_mcp = 4;
   }
 }
 
