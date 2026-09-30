@@ -1,398 +1,341 @@
 # NormalizedRequest
 
-Este documento define exclusivamente como o `ai-bash-gen` transforma uma solicitação em linguagem natural em uma representação técnica curta, estável e em inglês.
+## Responsabilidade
 
-## Objetivo
+`NormalizedRequest` é o contrato intermediário entre a interpretação da linguagem natural e a descoberta/geração de capabilities.
 
-O primeiro LLM do pipeline deve ser pequeno e barato.
+Ela descreve:
 
-Ele não gera Bash, não consulta MCPs e não decide qual capability utilizar.
+- objetivo global;
+- pequenas tarefas;
+- entradas literais;
+- dependências entre tarefas;
+- resultados nomeados;
+- fluxo de dados entre resultados;
+- saída final esperada.
 
-Sua única responsabilidade é converter a frase do usuário em uma `NormalizedRequest`.
+Ela não descreve comandos Bash nem implementações.
 
-Exemplo:
+## Contrato Protobuf
+
+Definido em:
 
 ```text
-Usuário:
-liste os itens da pasta ~/ambiente mostrando nome,
-tamanho e permissão, do maior para o menor
+proto/ai_bash_gen/v1/pipeline.proto
 ```
 
-Saída:
+Estrutura principal:
 
-```json
-{
-  "intent": "list_directory_items",
-  "canonical_instruction": "List directory items with selected metadata and sorting.",
+```proto
+message NormalizedRequest {
+  string intent = 1;
+  string canonical_instruction = 2;
+  string input_description = 3;
+  string output_description = 4;
+  repeated NormalizedTask tasks = 5;
+  string final_output_ref = 6;
+}
 
-  "input_description": "Directory path, selected fields, sort field and sort direction.",
-  "output_description": "Table containing name, size and permissions ordered by size descending.",
-
-  "input": [
-    {
-      "name": "path",
-      "type": "path",
-      "value": "~/ambiente"
-    },
-    {
-      "name": "fields",
-      "type": "list<string>",
-      "value": ["name", "size", "permissions"]
-    },
-    {
-      "name": "sort_by",
-      "type": "string",
-      "value": "size"
-    },
-    {
-      "name": "sort_order",
-      "type": "string",
-      "value": "desc"
-    }
-  ],
-
-  "processing": [
-    "Enumerate directory items.",
-    "Collect requested metadata.",
-    "Sort rows by size descending."
-  ],
-
-  "output": [
-    {
-      "type": "table",
-      "fields": ["name", "size", "permissions"]
-    }
-  ]
+message NormalizedTask {
+  string id = 1;
+  string instruction = 2;
+  string input_description = 3;
+  string output_description = 4;
+  repeated TaskInput inputs = 5;
+  TaskOutput output = 6;
+  repeated string depends_on = 7;
 }
 ```
 
-## Regras
+## Modelo de processamento
 
-### 1. Inglês como linguagem canônica
-
-Os campos usados para descoberta devem ser escritos em inglês:
-
-- `intent`;
-- `canonical_instruction`;
-- `input_description`;
-- `output_description`;
-- `processing`.
-
-Valores fornecidos pelo usuário não devem ser traduzidos ou alterados.
+Uma requisição composta deve formar um pequeno grafo de dados.
 
 Exemplo:
 
 ```text
-~/ambiente
-/data
-500 MB
-relatorio.txt
+list_files
+    |
+    | resultList
+    v
+filter_executables
+    |
+    | filteredList
+    v
+sort_by_size
+    |
+    | sortedList
+    v
+final output
 ```
 
-devem permanecer como foram informados.
+O resultado de uma tarefa deve ser referenciado pela próxima tarefa sem copiar o conteúdo.
 
-### 2. Separar intenção de valores concretos
-
-Evitar:
-
-```text
-List subdirectories in ~/ambiente.
+```textproto
+inputs {
+  name: "source"
+  type: "table"
+  result_ref: "resultList"
+}
 ```
 
-Preferir:
+## Campos globais
+
+### `intent`
+
+Identificador curto e estável da finalidade completa.
+
+Exemplo:
 
 ```text
-canonical_instruction:
-List subdirectories in a directory.
-
-input:
-base_path = ~/ambiente
+list_executable_files
 ```
 
-Isso permite que a mesma instrução seja comparada com capabilities genéricas.
+### `canonical_instruction`
 
-### 3. `intent`
+Descrição em inglês do objetivo completo, preferencialmente sem valores específicos.
 
-Deve ser curto, técnico e estável.
-
-Formato recomendado:
+Exemplo:
 
 ```text
-snake_case
+List executable files with selected metadata and sorting.
+```
+
+### `input_description`
+
+Resumo das entradas externas necessárias para cumprir o objetivo completo.
+
+### `output_description`
+
+Resumo da saída final.
+
+Esses quatro campos podem ser usados para procurar uma capability composta que resolva toda a requisição.
+
+## Tarefas
+
+Cada `NormalizedTask` representa uma transformação pequena.
+
+Exemplo:
+
+```textproto
+tasks {
+  id: "filter_executables"
+  instruction: "Keep executable files only."
+  input_description: "Table containing file metadata."
+  output_description: "Table containing executable files only."
+
+  inputs {
+    name: "source"
+    type: "table"
+    result_ref: "resultList"
+  }
+
+  output {
+    name: "filteredList"
+    type: "table"
+    fields: "name"
+    fields: "size"
+    fields: "type"
+  }
+
+  depends_on: "list_files"
+}
+```
+
+## Entradas
+
+Uma entrada possui nome e tipo e recebe seu valor de uma das duas fontes:
+
+### Literal
+
+Valor fornecido pelo usuário:
+
+```textproto
+inputs {
+  name: "path"
+  type: "path"
+  literal: "~/ambiente"
+}
+```
+
+### Resultado anterior
+
+Valor produzido por outra tarefa:
+
+```textproto
+inputs {
+  name: "source"
+  type: "table"
+  result_ref: "resultList"
+}
+```
+
+O campo `oneof source` do Protobuf impede que uma entrada seja simultaneamente literal e referência.
+
+## Saídas
+
+Toda tarefa deve possuir exatamente uma saída nomeada.
+
+```textproto
+output {
+  name: "resultList"
+  type: "table"
+  fields: "name"
+  fields: "size"
+  fields: "type"
+}
+```
+
+Nomes devem ser únicos dentro da requisição.
+
+Convenção:
+
+```text
+lowerCamelCase
 ```
 
 Exemplos:
 
 ```text
-list_subdirectories
-list_directory_items
-find_large_files
-create_directory_archive
-read_email_messages
+resultList
+filteredList
+sortedList
+archiveFile
+emailList
+reportTable
 ```
 
-O `intent` não deve conter valores da requisição.
+## Compatibilidade entre tarefas
 
-Evitar:
+Antes de aceitar uma cadeia, a aplicação deve conferir se o tipo da saída anterior é compatível com a entrada seguinte.
+
+Exemplo válido:
 
 ```text
-list_subdirectories_in_home_ambiente
-```
-
-### 4. `canonical_instruction`
-
-É uma frase curta que descreve o comportamento principal.
-
-Exemplos:
-
-```text
-List subdirectories in a directory.
-List directory items with selected metadata and sorting.
-Find files larger than a size threshold.
-Create a compressed archive from a directory.
-```
-
-Ela deve ser genérica o suficiente para localizar uma capability reutilizável.
-
-### 5. `input_description`
-
-Resumo em uma frase dos tipos de entrada e opções esperadas.
-
-Exemplo:
-
-```text
-Directory path, selected fields, sort field and sort direction.
-```
-
-Esse campo será comparado com o `input_description` das capabilities.
-
-### 6. `output_description`
-
-Resumo em uma frase da forma da saída solicitada.
-
-Exemplo:
-
-```text
-Table containing name, size and permissions ordered by size descending.
-```
-
-Esse campo ajuda a distinguir capabilities que executam operações parecidas, mas retornam resultados diferentes.
-
-### 7. `input`
-
-Contém parâmetros concretos extraídos da solicitação.
-
-Cada entrada pode possuir:
-
-```json
-{
-  "name": "path",
-  "type": "path",
-  "value": "~/ambiente"
-}
-```
-
-O normalizador não deve inventar valores ausentes.
-
-Quando um valor necessário não estiver disponível, utilizar:
-
-```json
-{
-  "name": "destination",
-  "type": "path",
-  "required": true,
-  "value": null
-}
-```
-
-### 8. `processing`
-
-Descreve as transformações necessárias sem escolher comandos Bash.
-
-Correto:
-
-```text
-Enumerate directory items.
-Collect requested metadata.
-Sort rows by size descending.
-```
-
-Evitar:
-
-```text
-Run find.
-Pipe to sort -nr.
-Use awk.
-```
-
-A escolha dos comandos pertence ao gerador ou à capability encontrada.
-
-### 9. `output`
-
-Define a estrutura lógica desejada.
-
-Exemplo:
-
-```json
-[
-  {
-    "type": "table",
-    "fields": ["name", "size", "permissions"]
-  }
-]
-```
-
-Outros exemplos:
-
-```json
-[
-  {
-    "type": "list<path>"
-  }
-]
-```
-
-```json
-[
-  {
-    "type": "file",
-    "format": "gzip"
-  }
-]
-```
-
-## Contrato inicial
-
-```json
-{
-  "intent": "string",
-  "canonical_instruction": "string",
-  "input_description": "string",
-  "output_description": "string",
-  "input": [],
-  "processing": [],
-  "output": []
-}
-```
-
-## Exemplos
-
-### Listar somente nomes
-
-Usuário:
-
-```text
-liste os arquivos de /dados por nome
-```
-
-```json
-{
-  "intent": "list_directory_items",
-  "canonical_instruction": "List directory items with selected metadata and sorting.",
-  "input_description": "Directory path, selected fields and sort field.",
-  "output_description": "List containing item names ordered by name.",
-  "input": [
-    {"name":"path","type":"path","value":"/dados"},
-    {"name":"fields","type":"list<string>","value":["name"]},
-    {"name":"sort_by","type":"string","value":"name"},
-    {"name":"sort_order","type":"string","value":"asc"}
-  ],
-  "processing": [
-    "Enumerate directory items.",
-    "Return requested fields.",
-    "Sort by name ascending."
-  ],
-  "output": [
-    {"type":"list","fields":["name"]}
-  ]
-}
-```
-
-### Listar nome e tamanho
-
-Usuário:
-
-```text
-mostre nome e tamanho dos arquivos em /dados, maiores primeiro
-```
-
-```json
-{
-  "intent": "list_directory_items",
-  "canonical_instruction": "List directory items with selected metadata and sorting.",
-  "input_description": "Directory path, selected fields, sort field and sort direction.",
-  "output_description": "Table containing name and size ordered by size descending.",
-  "input": [
-    {"name":"path","type":"path","value":"/dados"},
-    {"name":"fields","type":"list<string>","value":["name","size"]},
-    {"name":"sort_by","type":"string","value":"size"},
-    {"name":"sort_order","type":"string","value":"desc"}
-  ],
-  "processing": [
-    "Enumerate directory items.",
-    "Collect name and size.",
-    "Sort by size descending."
-  ],
-  "output": [
-    {"type":"table","fields":["name","size"]}
-  ]
-}
-```
-
-### Encontrar arquivos grandes
-
-Usuário:
-
-```text
-procure arquivos maiores que 500 MB em /var/log
-```
-
-```json
-{
-  "intent": "find_large_files",
-  "canonical_instruction": "Find files larger than a size threshold.",
-  "input_description": "Base directory and minimum file size.",
-  "output_description": "List of file paths matching the size threshold.",
-  "input": [
-    {"name":"path","type":"path","value":"/var/log"},
-    {"name":"minimum_size","type":"size","value":"500 MB"}
-  ],
-  "processing": [
-    "Traverse files below the base directory.",
-    "Keep files larger than the threshold."
-  ],
-  "output": [
-    {"type":"list<path>"}
-  ]
-}
-```
-
-## Validação
-
-A aplicação deve validar a saída antes de continuar.
-
-Rejeitar:
-
-- JSON inválido;
-- `intent` vazio;
-- instrução vazia;
-- descrições vazias;
-- valores inventados;
-- comandos Bash em `processing`;
-- campos fora do schema quando o modo estrito estiver habilitado.
-
-## Uso no próximo estágio
-
-A `NormalizedRequest` alimenta diretamente a pesquisa do catálogo:
-
-```text
-intent
-canonical_instruction
-input_description
-output_description
+list_files
+output: table
         |
         v
-search_capabilities
+filter_executables
+input: table
 ```
 
-Os valores concretos de `input` são usados posteriormente para montar a invocação específica da capability selecionada.
+Uma capability selecionada para uma tarefa deve possuir saída compatível com o contrato da tarefa, e não apenas descrição semanticamente semelhante.
+
+## Capability composta
+
+As tarefas são uma descrição lógica do problema. Elas não obrigam a execução em múltiplas funções.
+
+Para:
+
+```text
+list_files
+filter_executables
+sort_by_size
+```
+
+o catálogo pode retornar uma única capability:
+
+```text
+list-executable-files-sorted-by-size
+```
+
+Se entrada e saída forem compatíveis com a requisição completa, o gerador pode substituir toda a cadeia por essa capability.
+
+A decomposição continua sendo útil porque fornece fallback caso não exista uma implementação composta.
+
+## Exemplo completo
+
+```textproto
+intent: "list_executable_files"
+canonical_instruction: "List executable files with selected metadata and sorting."
+input_description: "Directory path."
+output_description: "Table containing executable files with name, size and type ordered by size descending."
+
+tasks {
+  id: "list_files"
+  instruction: "List directory items with name, size and type."
+  input_description: "Directory path."
+  output_description: "Table containing name, size and type for each item."
+  inputs {
+    name: "path"
+    type: "path"
+    literal: "~/ambiente"
+  }
+  output {
+    name: "resultList"
+    type: "table"
+    fields: "name"
+    fields: "size"
+    fields: "type"
+  }
+}
+
+tasks {
+  id: "filter_executables"
+  instruction: "Keep executable files only."
+  input_description: "Table containing file metadata."
+  output_description: "Table containing executable files only."
+  inputs {
+    name: "source"
+    type: "table"
+    result_ref: "resultList"
+  }
+  output {
+    name: "filteredList"
+    type: "table"
+    fields: "name"
+    fields: "size"
+    fields: "type"
+  }
+  depends_on: "list_files"
+}
+
+tasks {
+  id: "sort_by_size"
+  instruction: "Sort rows by size descending."
+  input_description: "Table containing executable file metadata."
+  output_description: "Table ordered by size descending."
+  inputs {
+    name: "source"
+    type: "table"
+    result_ref: "filteredList"
+  }
+  output {
+    name: "sortedList"
+    type: "table"
+    fields: "name"
+    fields: "size"
+    fields: "type"
+  }
+  depends_on: "filter_executables"
+}
+
+final_output_ref: "sortedList"
+```
+
+## Representação para o LLM
+
+O contrato canônico é Protobuf.
+
+- entre componentes: Protobuf binário;
+- entrada/saída textual do LLM: Protobuf Text Format;
+- banco: estrutura própria do PostgreSQL;
+- não usar base64 para enviar Protobuf binário ao LLM.
+
+O TextProto deve omitir campos com valores padrão e qualquer metadado que a etapa atual não precise conhecer.
+
+## Validações
+
+A aplicação deve rejeitar uma `NormalizedRequest` quando:
+
+- não houver tarefas;
+- uma tarefa não possuir saída;
+- houver resultados duplicados;
+- `result_ref` apontar para resultado inexistente;
+- houver referência a resultado futuro;
+- houver ciclo;
+- tipos forem incompatíveis;
+- `final_output_ref` não existir;
+- valores necessários tiverem sido inventados;
+- tarefas contiverem implementação shell em vez de comportamento lógico.
