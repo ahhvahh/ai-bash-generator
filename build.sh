@@ -10,6 +10,9 @@ SOURCE_PACKAGE="./cmd/ai-bash-gen"
 MODULE_PATH="github.com/ahhvahh/ai-bash-generator"
 INSTALL_SCRIPT="$ROOT/install-binary.sh"
 TEST_SCRIPT="$ROOT/test-binary.sh"
+GENERATION_TEST_SCRIPT="$ROOT/test-generation.sh"
+GENERATION_TEST_NAME="ai-bash-gen-generation-test"
+GENERATION_TEST_PACKAGE="./cmd/ai-bash-gen-generation-test"
 
 SUPPORTED_ARCHITECTURES=(
   amd64
@@ -49,6 +52,8 @@ Cada build aprovado gera em bin/<arquitetura>/:
   ai-bash-gen
   install-binary.sh
   test-binary.sh
+  ai-bash-gen-generation-test
+  test-generation.sh
 
 O test-binary.sh é executado automaticamente contra o binário final.
 Sem argumento o build é recusado.
@@ -119,7 +124,7 @@ require_go() {
 
 require_distribution_scripts() {
   local script
-  for script in "$INSTALL_SCRIPT" "$TEST_SCRIPT"; do
+  for script in "$INSTALL_SCRIPT" "$TEST_SCRIPT" "$GENERATION_TEST_SCRIPT"; do
     [[ -f "$script" ]] || {
       echo "[ERRO] arquivo obrigatório não encontrado: $script" >&2
       exit 1
@@ -176,11 +181,42 @@ build_go() {
   esac
 }
 
+build_generation_test() {
+  local arch="$1"
+  local output_dir="$BIN/$arch"
+  local output_file="$output_dir/$GENERATION_TEST_NAME"
+
+  echo "[build] linux/$arch -> ${output_file#$ROOT/}"
+  case "$arch" in
+    arm)
+      (
+        cd "$GO_ROOT"
+        CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 \
+          go build -trimpath -o "$output_file" "$GENERATION_TEST_PACKAGE"
+      )
+      ;;
+    amd64)
+      (
+        cd "$GO_ROOT"
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 \
+          go build -trimpath -o "$output_file" "$GENERATION_TEST_PACKAGE"
+      )
+      ;;
+    *)
+      (
+        cd "$GO_ROOT"
+        CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
+          go build -trimpath -o "$output_file" "$GENERATION_TEST_PACKAGE"
+      )
+      ;;
+  esac
+}
 package_distribution_files() {
   local arch="$1"
   local output_dir="$BIN/$arch"
   install -m 0755 -- "$INSTALL_SCRIPT" "$output_dir/install-binary.sh"
   install -m 0755 -- "$TEST_SCRIPT" "$output_dir/test-binary.sh"
+  install -m 0755 -- "$GENERATION_TEST_SCRIPT" "$output_dir/test-generation.sh"
   echo "[package] scripts adicionados em ${output_dir#$ROOT/}"
 }
 
@@ -236,9 +272,15 @@ require_go
 require_distribution_scripts
 run_tests
 build_go "$TARGET"
+build_generation_test "$TARGET"
 
 if [[ ! -s "$BIN/$TARGET/$PROJECT_NAME" ]]; then
   echo "[ERRO] artefato não foi gerado: $BIN/$TARGET/$PROJECT_NAME" >&2
+  exit 1
+fi
+
+if [[ ! -s "$BIN/$TARGET/$GENERATION_TEST_NAME" ]]; then
+  echo "[ERRO] artefato de teste não foi gerado: $BIN/$TARGET/$GENERATION_TEST_NAME" >&2
   exit 1
 fi
 
