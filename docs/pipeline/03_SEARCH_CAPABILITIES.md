@@ -2,74 +2,74 @@
 
 ## Responsabilidade
 
-`search_capabilities` recebe uma `NormalizedRequest` validada e procura no PostgreSQL capabilities que possam resolver:
+`search_capabilities` recebe uma `NormalizedRequest` com status `READY` e procura capabilities ativas que possam resolver:
 
-1. a requisição completa; ou
+1. a requisição completa;
 2. cada tarefa individualmente.
 
-Esta etapa deve ser determinística e não precisa de LLM.
-
-Por isso ela não possui prompt de sistema.
-
-## Objetivo
-
-Reduzir o trabalho do `bash-generator`.
-
-A busca deve oferecer poucos candidatos e respostas curtas, sem carregar código-fonte ou contratos detalhados.
+Não utiliza LLM.
 
 ## Entrada
 
 ```proto
 message SearchCapabilitiesRequest {
   NormalizedRequest request = 1;
-  uint32 limit = 2;
+  SearchBudget budget = 2;
 }
 ```
 
-O valor de `limit` deve ser pequeno. Valor inicial sugerido:
+`SearchBudget` limita o crescimento do contexto:
 
 ```text
-5
+composite_limit
+per_task_limit
+global_candidate_limit
+max_capability_details
 ```
 
-## Estratégia
+## Duas fases
 
-### 1. Busca composta
+### 1. Candidate retrieval
 
-Primeiro pesquisar uma capability que possa atender a requisição completa usando:
+PostgreSQL procura por:
 
-- `intent`;
-- `canonical_instruction`;
-- `input_description`;
-- `output_description`.
+- intent exato;
+- Full Text Search;
+- enabled;
+- versão ativa;
+- status ativo.
 
-Exemplo:
+### 2. Deterministic pruning
+
+Antes do LLM, a aplicação remove candidatos incompatíveis usando:
+
+- `CapabilityType`;
+- `CapabilityInterface.stdin_contract`;
+- argumentos;
+- `stdout_contract`;
+- `DataKind`;
+- campos obrigatórios;
+- `StreamEncoding`;
+- política/plataforma.
+
+Full Text Search localiza candidatos. Ele não decide compatibilidade.
+
+## Busca composta
+
+Usa:
 
 ```text
-List executable files with selected metadata and sorting.
+intent
+canonical_instruction
+input_description
+output_description
 ```
 
-Pode encontrar:
+e verifica a interface estruturada da capability contra a entrada e saída globais.
 
-```text
-list-executable-files-sorted-by-size
-```
+## Busca por tarefa
 
-Se uma capability composta for adequada, o gerador poderá substituir várias tarefas por uma única chamada.
-
-### 2. Busca por tarefa
-
-Também pesquisar candidatos para cada tarefa.
-
-Exemplo:
-
-```text
-list_files
-filter_executables
-sort_by_size
-```
-
-Isso fornece fallback quando nenhuma capability composta atende ao fluxo completo.
+Quando nenhuma solução composta adequada existe, buscar por cada `NormalizedTask`.
 
 ## Saída
 
@@ -80,107 +80,12 @@ message SearchCapabilitiesResponse {
 }
 ```
 
-Cada candidato contém somente:
+O objeto interno pode carregar a interface estruturada.
 
-```proto
-message CapabilityCandidate {
-  string id = 1;
-  CapabilityType type = 2;
-  string description = 3;
-  string match_instruction = 4;
-  string input_description = 5;
-  string output_description = 6;
-}
-```
-
-## Exemplo em TextProto
-
-```textproto
-composite_candidates {
-  id: "list-executable-files"
-  type: CAPABILITY_TYPE_FUNCTION
-  description: "List executable directory items with metadata and sorting."
-  match_instruction: "List executable files with selected metadata and sorting."
-  input_description: "Directory path, selected fields and sort options."
-  output_description: "Table containing matching files with selected fields."
-}
-
-task_candidates {
-  task_id: "list_files"
-  candidates {
-    id: "list-directory-details"
-    type: CAPABILITY_TYPE_FUNCTION
-    description: "List directory items with selectable metadata."
-    match_instruction: "List directory items with selected metadata."
-    input_description: "Directory path and selected fields."
-    output_description: "Table containing one row per directory item."
-  }
-}
-
-task_candidates {
-  task_id: "filter_executables"
-  candidates {
-    id: "filter-executable-rows"
-    type: CAPABILITY_TYPE_FUNCTION
-    description: "Keep executable entries from a file metadata table."
-    match_instruction: "Filter file metadata to executable entries."
-    input_description: "Table containing file metadata."
-    output_description: "Table containing executable entries only."
-  }
-}
-```
-
-## Dados que não devem ser retornados
-
-A pesquisa não retorna:
-
-- código;
-- caminho de executável;
-- dependências;
-- versão;
-- risco;
-- complexidade;
-- contador de uso;
-- timestamps;
-- contrato detalhado.
-
-Esses dados são recuperados somente por `get_capability`.
-
-## Seleção
-
-`search_capabilities` não escolhe o vencedor.
-
-Ele apenas entrega candidatos.
-
-O `bash-generator` deve comparar:
+Na visão TextProto do LLM, após o pruning, retornar preferencialmente apenas:
 
 ```text
-objective
-input compatibility
-output compatibility
-composition cost
-```
-
-A preferência é:
-
-```text
-1 capability que resolve o fluxo completo
-        >
-menor conjunto de capabilities compatíveis
-        >
-geração de nova capability
-```
-
-desde que a opção escolhida preserve exatamente o comportamento solicitado.
-
-## PostgreSQL
-
-A pesquisa usa a tabela pequena `capability`.
-
-Campos retornáveis:
-
-```text
-capability_key
+id
 type
 description
 match_instruction
@@ -188,42 +93,26 @@ input_description
 output_description
 ```
 
-A primeira filtragem pode combinar correspondência exata de `intent` e Full Text Search.
+Assim o LLM não paga novamente por informações que a aplicação já validou.
 
-A aplicação deve executar uma consulta para a requisição completa e consultas por tarefa somente quando necessário.
+## Deduplicação
+
+O mesmo ID pode aparecer em múltiplas buscas.
+
+Antes de montar a visão do gerador:
+
+- deduplicar IDs globalmente;
+- respeitar `global_candidate_limit`;
+- preservar a associação do candidato com as tarefas em que ele é aplicável.
 
 ## Registro de uso
 
 `search_capabilities` não registra uso.
 
-Somente:
+O evento ocorre quando a versão completa é carregada por `get_capability`.
 
-```text
-get_capability(id)
-```
+## Falha
 
-gera append em:
+Zero candidatos é um resultado válido.
 
-```text
-capability_usage
-```
-
-porque é nesse momento que o agente solicita o conteúdo completo de uma capability.
-
-## Limites
-
-Regras iniciais:
-
-- máximo de 5 candidatos compostos;
-- máximo de 5 candidatos por tarefa;
-- nenhuma repetição do mesmo ID dentro do mesmo conjunto;
-- candidatos desabilitados nunca são retornados;
-- resultados vazios são válidos.
-
-## Protobuf e LLM
-
-A saída canônica desta etapa é Protobuf.
-
-O `bash-generator` recebe uma visão TextProto compacta contendo apenas os candidatos relevantes.
-
-O binário Protobuf não deve ser codificado em base64 para inclusão no prompt.
+O pipeline segue para o `bash-generator`, que poderá gerar somente as capabilities ausentes.
