@@ -92,17 +92,31 @@ ask_value() {
 validate_absolute_path() {
   local label="$1" value="$2"
 
-  [[ -n "$value" ]] || {
+  if [[ -z "$value" ]]; then
     warn "$label não pode ser vazio."
     return 1
-  }
+  fi
 
-  [[ "$value" == /* ]] || {
+  if [[ "$value" != /* ]]; then
     warn "$label deve ser um caminho absoluto. Valor informado: $value"
     return 1
-  }
+  fi
 
-  [[ "$value" != *
+  return 0
+}
+
+ask_absolute_path() {
+  local prompt="$1" default="$2" label="$3"
+  local value
+
+  while true; do
+    value="$(ask_value "$prompt" "$default")"
+    if validate_absolute_path "$label" "$value"; then
+      printf '%s' "$value"
+      return 0
+    fi
+  done
+}
 confirm_value() {
   local label="$1"
   local value="$2"
