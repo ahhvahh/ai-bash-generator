@@ -136,22 +136,26 @@ Resposta resumida:
   "results": [
     {
       "id": "list-subdirectories",
-      "version": 1,
       "type": "function",
-      "name": "List Subdirectories",
       "description": "List immediate child directories of a given path.",
-      "match_instruction": "List subdirectories in a directory.",
-      "language": "bash",
-      "complexity_score": 1,
-      "usage_count": 42
+      "match_instruction": "List subdirectories in a directory."
     }
   ]
 }
 ```
 
-A pesquisa deve retornar somente metadados suficientes para seleção.
+A resposta de `search_capabilities` deve ser propositalmente mínima para reduzir o número de tokens e simplificar a interpretação por modelos pequenos.
 
-Código, endereço, argumentos completos e contratos ficam para `get_capability`.
+Cada resultado deve retornar somente:
+
+- `id`;
+- `type`;
+- `description`;
+- `match_instruction`.
+
+Informações como versão, nome amigável, linguagem, complexidade, contador de uso, código, endereço, dependências, entradas e saídas não devem ser retornadas nessa etapa.
+
+Depois que o agente selecionar um `id`, ele deve utilizar `get_capability` para obter a definição completa da capacidade.
 
 #### `get_capability`
 
