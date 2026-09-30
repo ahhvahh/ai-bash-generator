@@ -10,12 +10,41 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install acceptance-test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22.x'
-      - name: Test
+      - name: Go tests
         working-directory: src/go
         run: go test ./...
-      - name: Build
-        working-directory: src/go
-        run: go build ./...
+      - name: Validate shell scripts
+        run: bash -n build.sh install-binary.sh test-binary.sh test-generation.sh
+      - name: Build and acceptance tests
+        run: ./build.sh amd64
+      - name: Verify current generation endpoint state
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tmp="$(mktemp -d)"
+          trap 'kill "${pid:-}" 2>/dev/null || true; rm -rf "$tmp"' EXIT
+          printf '%s\n' '# CI config' > "$tmp/config.yaml"
+          AI_BASH_GEN_RUNTIME_DIR="$tmp/run" bin/amd64/ai-bash-gen --config "$tmp/config.yaml" >"$tmp/daemon.log" 2>&1 &
+          pid=$!
+          for _ in $(seq 1 50); do
+            [[ -S "$tmp/run/routes/generate.sock" ]] && break
+            sleep 0.1
+          done
+          test -S "$tmp/run/routes/generate.sock"
+          set +e
+          bin/amd64/ai-bash-gen-generation-test --socket "$tmp/run/routes/generate.sock" --case 01-echo >"$tmp/smoke.out" 2>"$tmp/smoke.err"
+          rc=$?
+          set -e
+          cat "$tmp/smoke.out"
+          cat "$tmp/smoke.err"
+          test "$rc" -eq 3
+          grep -q 'PIPELINE_NOT_IMPLEMENTED\|pipeline real ainda não implementado' "$tmp/smoke.err"
+          kill -TERM "$pid"
+          wait "$pid"
