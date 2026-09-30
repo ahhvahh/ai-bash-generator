@@ -195,11 +195,11 @@ runtime:
 
 input:
   type: protobuf_text
-  message: ai_bash_gen.v1.NormalizedRequest
+  message: ai_bash_gen.v1.GeneratorTurnRequest
 
 output:
   type: protobuf_text
-  message: ai_bash_gen.v1.GenerationResult
+  message: ai_bash_gen.v1.GeneratorTurnResult
 
 tools:
   mcp:
@@ -207,48 +207,12 @@ tools:
       - capability-catalog
       - google-mail
 
-prompt: |
-  Você é um agente especializado em geração de scripts Bash.
-
-  Sua entrada será uma NormalizedRequest validada.
-
-  Antes de implementar lógica complexa, consulte o MCP
-  capability-catalog para procurar funções, scripts ou aplicações
-  reutilizáveis.
-
-  Compare os candidatos usando objetivo, entrada e saída.
-
-  Se nenhuma capability atender adequadamente à NormalizedRequest,
-  gere uma nova função reutilizável e parametrizada.
-
-  Não fixe na função reutilizável valores específicos da requisição.
-  Separe a capability genérica da invocação atual.
-
-  A nova capability deve possuir:
-  - description;
-  - match_instruction;
-  - input_description;
-  - output_description;
-  - contratos detalhados de entrada e saída;
-  - implementação;
-  - dependências.
-
-  Consulte o MCP google-mail somente quando a solicitação do usuário
-  depender explicitamente de conteúdo de e-mail.
-
-  Não consulte e-mails por curiosidade ou sem necessidade para a tarefa.
-
-  Não execute scripts.
-  Não execute comandos.
-  Não altere o sistema.
-  Não altere o catálogo.
-  Não modifique e-mails.
-
-  Gere um ScriptArtifact válido.
-
-  Declare em capabilities_used somente as capacidades efetivamente
-  incorporadas ou referenciadas no script final.
+prompt:
+  source: builtin
+  id: bash-generator-v1
 ```
+
+O prompt canônico de `bash-generator-v1` está em [pipeline/04_BASH_GENERATOR.md](pipeline/04_BASH_GENERATOR.md). Ele não deve ser duplicado neste documento.
 
 ---
 
@@ -555,15 +519,13 @@ tools:
   mcp:
     allowed: []
 
-prompt: |
-  Transforme a solicitação do usuário em uma NormalizedRequest.
-
-  Preserve requisitos informados.
-  Não invente requisitos.
-  Identifique informações ausentes.
-  Não gere o script final.
+prompt:
+  source: builtin
+  id: request-normalizer-v1
 ```
 
+
+O prompt canônico de `request-normalizer-v1` está em [pipeline/01_REQUEST_NORMALIZER.md](pipeline/01_REQUEST_NORMALIZER.md).
 ---
 
 ## 7. Agente inicial: bash-generator
@@ -576,12 +538,12 @@ bash-generator
 
 Responsabilidade:
 
-- receber uma `NormalizedRequest`;
-- decidir se MCPs podem melhorar a resposta;
-- pesquisar capacidades reutilizáveis;
-- consultar e-mails apenas quando necessário;
-- gerar um `ScriptArtifact`;
-- declarar capacidades utilizadas.
+- receber `GeneratorTurnRequest`;
+- avaliar candidatos já pesquisados e podados pela aplicação;
+- solicitar detalhes por `GeneratorToolRequest`;
+- consultar MCPs generation-time somente quando necessário;
+- produzir `GenerationPlan`;
+- nunca produzir o arquivo Bash final diretamente.
 
 ### Ordem recomendada
 
@@ -589,26 +551,32 @@ Responsabilidade:
 NormalizedRequest
    |
    v
-analisar requisitos
-   |
-   +--> precisa de capacidade reutilizável?
-   |        |
-   |        v
-   |   capability-catalog.search_capabilities
-   |        |
-   |        v
-   |   capability-catalog.get_capability
-   |
-   +--> precisa de e-mail?
-   |        |
-   |        v
-   |   google-mail.search_emails
-   |        |
-   |        v
-   |   google-mail.get_email / get_thread
+search_capabilities + deterministic pruning
    |
    v
-gerar ScriptArtifact
+GeneratorTurnRequest
+   |
+   +--> GeneratorToolRequests
+   |       |
+   |       v
+   |   ai-bash-gen Tool Orchestrator
+   |       |
+   |       +--> get_capability
+   |       +--> generation-time MCP
+   |       |
+   |       v
+   |   GeneratorToolResponse
+   |       |
+   +-------+
+   |
+   v
+GenerationPlan
+   |
+   v
+validation
+   |
+   v
+bash-output
 ```
 
 ---
@@ -642,38 +610,27 @@ Nunca utilizar Gmail para enriquecer genericamente uma resposta.
 
 ---
 
-## 9. ScriptArtifact
+## 9. GenerationPlan
 
-Formato conceitual:
+O LLM não entrega um script livre.
 
-```json
-{
-  "version": "1.0",
-  "language": "bash",
-  "script": "#!/usr/bin/env bash\n...",
-  "capabilities_used": [
-    {
-      "id": "archive_directory",
-      "version": 2
-    }
-  ],
-  "sources_used": [
-    {
-      "type": "email",
-      "reference": "message:18f..."
-    }
-  ],
-  "warnings": []
+A saída final do gerador é:
+
+```proto
+message GenerationPlan {
+  GenerationStatus status = 1;
+  repeated CapabilityCall calls = 2;
+  repeated GeneratedCapability generated_capabilities = 3;
+  string final_output_ref = 4;
+  repeated string warnings = 5;
 }
 ```
 
-O campo `capabilities_used` registra quais capacidades foram incorporadas ao resultado.
+O `bash-output` monta o arquivo `.sh` deterministicamente depois da validação.
 
-A telemetria de acesso ao catálogo ocorre quando o agente chama `get_capability`, que gera um registro append-only no banco.
+Capabilities existentes carregadas por `get_capability` são identificadas por `capability_version_id`, garantindo rastreabilidade da implementação exata.
 
-Quando uma nova função reutilizável for criada, o artefato poderá incluir também uma `generated_capability`, que será validada e deduplicada antes de entrar no catálogo.
-
-O campo `sources_used` permite auditoria sem copiar conteúdo sensível para logs.
+Novas capabilities são publicadas separadamente por operação idempotente.
 
 ---
 
@@ -811,49 +768,39 @@ Se o reload falhar, a configuração ativa anterior deve continuar válida.
 
 ## 15. Pipeline padrão
 
-Configuração conceitual:
-
-```yaml
-pipelines:
-
-  script-builder:
-
-    steps:
-
-      - agent: request-normalizer
-        output_schema: normalized-request
-
-      - agent: bash-generator
-        input: previous
-```
-
-Fluxo:
+A sequência canônica está em [pipeline/README.md](pipeline/README.md).
 
 ```text
-usuário
-  |
-  v
+UserRequest
+   |
+   v
 request-normalizer
-  |
-  v
+   |
+   v
 NormalizedRequest
-  |
-  v
-bash-generator
-  |
-  +--> MCP capability-catalog
-  |
-  +--> MCP google-mail, se necessário
-  |
-  v
-ScriptArtifact
-  |
-  v
-validação
-  |
-  v
-script Bash
+   |
+   v
+search_capabilities
+   |
+   v
+bash-generator tool loop
+   |
+   v
+GenerationPlan
+   |
+   v
+validation
+   |
+   +--> Capability Publisher
+   |
+   v
+bash-output
+   |
+   v
+BashArtifact
 ```
+
+Os agentes LLM são somente `request-normalizer` e `bash-generator`. Pesquisa, validação, publicação e materialização são etapas determinísticas da aplicação.
 
 ---
 
