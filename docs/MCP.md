@@ -28,7 +28,7 @@ capability-catalog
 
 O catálogo recebe uma `NormalizedRequest`, nunca a frase original do usuário.
 
-A normalização é documentada separadamente em [NORMALIZED_REQUEST.md](NORMALIZED_REQUEST.md).
+A normalização é documentada separadamente em [pipeline/02_NORMALIZED_REQUEST.md](pipeline/02_NORMALIZED_REQUEST.md).
 
 O MCP é consultivo: ele pesquisa e entrega definições de capacidades, mas não executa scripts ou aplicações.
 
