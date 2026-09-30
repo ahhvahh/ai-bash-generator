@@ -69,19 +69,20 @@ Um agente contém, no mínimo:
 
 A documentação detalhada está em [docs/AGENTS.md](docs/AGENTS.md).
 
-O pipeline geral está em [docs/REQUEST_FLOW.md](docs/REQUEST_FLOW.md).
+A documentação completa e ordenada do processamento está em [docs/pipeline/](docs/pipeline/README.md).
 
-O contrato e as regras da `NormalizedRequest` estão em [docs/NORMALIZED_REQUEST.md](docs/NORMALIZED_REQUEST.md).
+Etapas:
 
-Documentação das etapas:
+1. [request-normalizer](docs/pipeline/01_REQUEST_NORMALIZER.md)
+2. [NormalizedRequest](docs/pipeline/02_NORMALIZED_REQUEST.md)
+3. [search_capabilities](docs/pipeline/03_SEARCH_CAPABILITIES.md)
+4. [bash-generator](docs/pipeline/04_BASH_GENERATOR.md)
+5. [validation](docs/pipeline/05_VALIDATION.md)
+6. [bash-output](docs/pipeline/06_BASH_OUTPUT.md)
 
-- [request-normalizer](docs/REQUEST_NORMALIZER.md)
-- [NormalizedRequest](docs/NORMALIZED_REQUEST.md)
-- [search_capabilities](docs/SEARCH_CAPABILITIES.md)
-- [bash-generator](docs/BASH_GENERATOR.md)
-- [Protobuf no pipeline](docs/PROTOBUF_PIPELINE.md)
+Referência de serialização: [Protobuf no pipeline](docs/pipeline/PROTOBUF.md).
 
-Schema Protobuf: [proto/ai_bash_gen/v1/pipeline.proto](proto/ai_bash_gen/v1/pipeline.proto).
+Schema canônico: [proto/ai_bash_gen/v1/pipeline.proto](proto/ai_bash_gen/v1/pipeline.proto).
 
 ### MCP
 
