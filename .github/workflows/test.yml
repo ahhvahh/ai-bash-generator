@@ -23,7 +23,7 @@ jobs:
       - name: Validate shell scripts
         run: bash -n build.sh install-binary.sh test-binary.sh test-installer.sh test-generation.sh
       - name: Installer regression tests
-        run: ./test-installer.sh
+        run: bash test-installer.sh
       - name: Build and acceptance tests
         run: ./build.sh amd64
       - name: Verify current generation endpoint state
