@@ -141,7 +141,11 @@ O Bash final será montado deterministicamente depois da validação.
 
 ## Novas capabilities
 
-Devem ser:
+Na primeira versão, capabilities criadas diretamente pelo LLM são somente do tipo `FUNCTION`.
+
+`SCRIPT`, `APPLICATION` e `SERVICE` dependem de artefatos externos concretos e entram por fluxo administrativo de cadastro/validação.
+
+Functions geradas devem ser:
 
 - genéricas;
 - parametrizadas;
