@@ -9,22 +9,22 @@ Ela descreve:
 - objetivo global;
 - pequenas tarefas;
 - entradas literais;
-- dependências entre tarefas;
+- dependências de dados;
+- dependências de controle;
 - resultados nomeados;
-- fluxo de dados entre resultados;
-- saída final esperada.
+- tipos estruturados;
+- saída final esperada;
+- informações obrigatórias ausentes.
 
 Ela não descreve comandos Bash nem implementações.
 
-## Contrato Protobuf
+## Contrato principal
 
 Definido em:
 
 ```text
 ../../proto/ai_bash_gen/v1/pipeline.proto
 ```
-
-Estrutura principal:
 
 ```proto
 message NormalizedRequest {
@@ -34,24 +34,80 @@ message NormalizedRequest {
   string output_description = 4;
   repeated NormalizedTask tasks = 5;
   string final_output_ref = 6;
-}
-
-message NormalizedTask {
-  string id = 1;
-  string instruction = 2;
-  string input_description = 3;
-  string output_description = 4;
-  repeated TaskInput inputs = 5;
-  TaskOutput output = 6;
-  repeated string depends_on = 7;
+  NormalizationStatus status = 7;
+  repeated MissingInput missing_inputs = 8;
 }
 ```
 
-## Modelo de processamento
+## Status da normalização
 
-Uma requisição composta deve formar um pequeno grafo de dados.
+```text
+READY
+MISSING_INFORMATION
+UNSUPPORTED
+```
 
-Exemplo:
+Quando faltar uma entrada obrigatória:
+
+```textproto
+status: NORMALIZATION_STATUS_MISSING_INFORMATION
+
+missing_inputs {
+  task_id: "copy_files"
+  name: "destination"
+  description: "Destination directory."
+  contract {
+    kind: DATA_KIND_PATH
+    encoding: STREAM_ENCODING_TEXT_UTF8
+  }
+}
+```
+
+Nesse caso o pipeline deve parar antes de `search_capabilities`.
+
+## Tipos estruturados
+
+Tipos não são mais strings livres.
+
+```text
+DataKind
+DataContract
+FieldSchema
+StreamEncoding
+```
+
+Exemplo de tabela:
+
+```textproto
+contract {
+  kind: DATA_KIND_TABLE
+  encoding: STREAM_ENCODING_JSON_LINES
+
+  fields {
+    name: "name"
+    kind: DATA_KIND_TEXT
+    required: true
+  }
+
+  fields {
+    name: "size"
+    kind: DATA_KIND_INTEGER
+    required: true
+  }
+
+  fields {
+    name: "type"
+    kind: DATA_KIND_TEXT
+    required: true
+  }
+}
+```
+
+Isso permite à aplicação comparar contratos sem depender da interpretação textual do LLM.
+
+## Fluxo de dados
+
+Uma requisição composta forma um grafo lógico:
 
 ```text
 list_files
@@ -69,273 +125,101 @@ sort_by_size
 final output
 ```
 
-O resultado de uma tarefa deve ser referenciado pela próxima tarefa sem copiar o conteúdo.
+`result_ref` cria dependência de dados automaticamente.
 
 ```textproto
 inputs {
   name: "source"
-  type: "table"
+  contract {
+    kind: DATA_KIND_TABLE
+    encoding: STREAM_ENCODING_JSON_LINES
+  }
   result_ref: "resultList"
 }
 ```
 
-## Campos globais
+## depends_on
 
-### `intent`
+`depends_on` existe apenas para dependência de controle quando não há passagem de dados.
 
-Identificador curto e estável da finalidade completa.
-
-Exemplo:
+Regra:
 
 ```text
-list_executable_files
+result_ref  -> dependência de dados
+depends_on  -> dependência de controle
 ```
 
-### `canonical_instruction`
+A aplicação deriva o DAG final e rejeita inconsistências ou ciclos.
 
-Descrição em inglês do objetivo completo, preferencialmente sem valores específicos.
+## ABI de runtime
 
-Exemplo:
+Para resultados encadeados:
 
 ```text
-List executable files with selected metadata and sorting.
+producer stdout -> consumer stdin
 ```
 
-### `input_description`
+`result_ref` representa logicamente esse stream.
 
-Resumo das entradas externas necessárias para cumprir o objetivo completo.
+O conteúdo do stream deve obedecer ao `DataContract`:
 
-### `output_description`
+- tipo;
+- campos;
+- encoding.
 
-Resumo da saída final.
+### Restrição inicial
 
-Esses quatro campos podem ser usados para procurar uma capability composta que resolva toda a requisição.
+Uma capability possui um único `stdin`.
 
-## Tarefas
+Portanto, na versão inicial:
 
-Cada `NormalizedTask` representa uma transformação pequena.
-
-Exemplo:
-
-```textproto
-tasks {
-  id: "filter_executables"
-  instruction: "Keep executable files only."
-  input_description: "Table containing file metadata."
-  output_description: "Table containing executable files only."
-
-  inputs {
-    name: "source"
-    type: "table"
-    result_ref: "resultList"
-  }
-
-  output {
-    name: "filteredList"
-    type: "table"
-    fields: "name"
-    fields: "size"
-    fields: "type"
-  }
-
-  depends_on: "list_files"
-}
-```
-
-## Entradas
-
-Uma entrada possui nome e tipo e recebe seu valor de uma das duas fontes:
-
-### Literal
-
-Valor fornecido pelo usuário:
-
-```textproto
-inputs {
-  name: "path"
-  type: "path"
-  literal: "~/ambiente"
-}
-```
-
-### Resultado anterior
-
-Valor produzido por outra tarefa:
-
-```textproto
-inputs {
-  name: "source"
-  type: "table"
-  result_ref: "resultList"
-}
-```
-
-O campo `oneof source` do Protobuf impede que uma entrada seja simultaneamente literal e referência.
+- cada chamada pode possuir no máximo um resultado estruturado ligado ao `stdin`;
+- valores escalares adicionais podem ser argumentos;
+- fan-out/fan-in de streams exige capability explícita de `tee`, merge/join ou materialização intermediária;
+- o assembler não deve inventar branching implícito.
 
 ## Saídas
 
-Toda tarefa deve possuir exatamente uma saída nomeada.
+Toda tarefa possui uma saída nomeada:
 
 ```textproto
 output {
   name: "resultList"
-  type: "table"
-  fields: "name"
-  fields: "size"
-  fields: "type"
+
+  contract {
+    kind: DATA_KIND_TABLE
+    encoding: STREAM_ENCODING_JSON_LINES
+
+    fields { name: "name" kind: DATA_KIND_TEXT required: true }
+    fields { name: "size" kind: DATA_KIND_INTEGER required: true }
+    fields { name: "type" kind: DATA_KIND_TEXT required: true }
+  }
 }
 ```
 
-Nomes devem ser únicos dentro da requisição.
-
-Convenção:
-
-```text
-lowerCamelCase
-```
-
-Exemplos:
-
-```text
-resultList
-filteredList
-sortedList
-archiveFile
-emailList
-reportTable
-```
-
-## Compatibilidade entre tarefas
-
-Antes de aceitar uma cadeia, a aplicação deve conferir se o tipo da saída anterior é compatível com a entrada seguinte.
-
-Exemplo válido:
-
-```text
-list_files
-output: table
-        |
-        v
-filter_executables
-input: table
-```
-
-Uma capability selecionada para uma tarefa deve possuir saída compatível com o contrato da tarefa, e não apenas descrição semanticamente semelhante.
+Nomes seguem `lowerCamelCase`.
 
 ## Capability composta
 
-As tarefas são uma descrição lógica do problema. Elas não obrigam a execução em múltiplas funções.
+A decomposição lógica não obriga múltiplas funções.
 
-Para:
+Se uma capability ativa possuir interface compatível com o objetivo completo, ela pode substituir várias tarefas.
 
-```text
-list_files
-filter_executables
-sort_by_size
-```
-
-o catálogo pode retornar uma única capability:
-
-```text
-list-executable-files-sorted-by-size
-```
-
-Se entrada e saída forem compatíveis com a requisição completa, o gerador pode substituir toda a cadeia por essa capability.
-
-A decomposição continua sendo útil porque fornece fallback caso não exista uma implementação composta.
-
-## Exemplo completo
-
-```textproto
-intent: "list_executable_files"
-canonical_instruction: "List executable files with selected metadata and sorting."
-input_description: "Directory path."
-output_description: "Table containing executable files with name, size and type ordered by size descending."
-
-tasks {
-  id: "list_files"
-  instruction: "List directory items with name, size and type."
-  input_description: "Directory path."
-  output_description: "Table containing name, size and type for each item."
-  inputs {
-    name: "path"
-    type: "path"
-    literal: "~/ambiente"
-  }
-  output {
-    name: "resultList"
-    type: "table"
-    fields: "name"
-    fields: "size"
-    fields: "type"
-  }
-}
-
-tasks {
-  id: "filter_executables"
-  instruction: "Keep executable files only."
-  input_description: "Table containing file metadata."
-  output_description: "Table containing executable files only."
-  inputs {
-    name: "source"
-    type: "table"
-    result_ref: "resultList"
-  }
-  output {
-    name: "filteredList"
-    type: "table"
-    fields: "name"
-    fields: "size"
-    fields: "type"
-  }
-  depends_on: "list_files"
-}
-
-tasks {
-  id: "sort_by_size"
-  instruction: "Sort rows by size descending."
-  input_description: "Table containing executable file metadata."
-  output_description: "Table ordered by size descending."
-  inputs {
-    name: "source"
-    type: "table"
-    result_ref: "filteredList"
-  }
-  output {
-    name: "sortedList"
-    type: "table"
-    fields: "name"
-    fields: "size"
-    fields: "type"
-  }
-  depends_on: "filter_executables"
-}
-
-final_output_ref: "sortedList"
-```
-
-## Representação para o LLM
-
-O contrato canônico é Protobuf.
-
-- entre componentes: Protobuf binário;
-- entrada/saída textual do LLM: Protobuf Text Format;
-- banco: estrutura própria do PostgreSQL;
-- não usar base64 para enviar Protobuf binário ao LLM.
-
-O TextProto deve omitir campos com valores padrão e qualquer metadado que a etapa atual não precise conhecer.
+A compatibilidade final é calculada deterministicamente pelo `ai-bash-gen`.
 
 ## Validações
 
-A aplicação deve rejeitar uma `NormalizedRequest` quando:
+Rejeitar quando:
 
-- não houver tarefas;
-- uma tarefa não possuir saída;
-- houver resultados duplicados;
-- `result_ref` apontar para resultado inexistente;
-- houver referência a resultado futuro;
+- status inválido;
+- status READY com `missing_inputs`;
+- não houver tarefas quando READY;
+- IDs forem duplicados;
+- resultados forem duplicados;
+- `result_ref` apontar para resultado inexistente ou futuro;
 - houver ciclo;
-- tipos forem incompatíveis;
+- tipo/encoding forem incompatíveis;
+- houver mais de um stream estruturado concorrendo pelo mesmo stdin;
 - `final_output_ref` não existir;
-- valores necessários tiverem sido inventados;
-- tarefas contiverem implementação shell em vez de comportamento lógico.
+- valores necessários forem inventados;
+- tarefas contiverem implementação shell.
