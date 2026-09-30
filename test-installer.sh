@@ -60,7 +60,7 @@ if [[ "${AI_BASH_GEN_TEST_PRIVILEGED:-0}" == "1" ]]; then
   command -v sudo >/dev/null 2>&1 || fail "sudo ausente para teste privilegiado"
   sudo -n true || fail "sudo sem senha é necessário no teste privilegiado de CI"
 
-  test_group="abgci$"
+  test_group="abgci$(date +%s)"
   cleanup_privileged() {
     sudo groupdel "$test_group" >/dev/null 2>&1 || true
   }
