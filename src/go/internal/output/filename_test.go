@@ -14,8 +14,9 @@ func TestValidateFilename(t *testing.T) {
 		{name: "", want: false},
 		{name: "../backup.sh", want: false},
 		{name: "dir/backup.sh", want: false},
-		{name: `dir\\backup.sh`, want: false},
+		{name: "dir\\backup.sh", want: false},
 		{name: "backup script.sh", want: false},
+		{name: "relatório.sh", want: false},
 		{name: "backup..sh", want: false},
 	}
 
