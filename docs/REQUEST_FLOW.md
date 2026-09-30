@@ -1,48 +1,8 @@
 # Fluxo de Requisição
 
-Este documento descreve como o `ai-bash-gen` transforma uma solicitação escrita pelo usuário em uma instrução técnica estável antes de consultar MCPs e gerar um script Bash.
+Este documento apresenta o pipeline geral do `ai-bash-gen`.
 
-## Objetivo
-
-A aplicação não deve enviar diretamente a frase original do usuário ao agente responsável por descobrir funções, scripts ou aplicações.
-
-Primeiro, um LLM pequeno e barato deve normalizar a requisição.
-
-A saída dessa etapa usa inglês como linguagem canônica interna.
-
-## Exemplo
-
-Solicitação:
-
-```text
-preciso listar as pastas que estão dentro da pasta ~/ambiente
-```
-
-Saída normalizada:
-
-```json
-{
-  "canonical_instruction": "List subdirectories in ~/ambiente.",
-  "intent": "list_subdirectories",
-  "input": [
-    {
-      "name": "base_path",
-      "type": "path",
-      "value": "~/ambiente"
-    }
-  ],
-  "processing": [
-    "Enumerate immediate child entries.",
-    "Keep directories only."
-  ],
-  "output": [
-    {
-      "name": "directories",
-      "type": "list<path>"
-    }
-  ]
-}
-```
+A especificação detalhada da normalização está em [NORMALIZED_REQUEST.md](NORMALIZED_REQUEST.md).
 
 ## Pipeline
 
@@ -56,138 +16,112 @@ request-normalizer
 NormalizedRequest
     |
     v
-capability-discovery
-    |
-    +--> MCP capability-catalog
+search_capabilities
     |
     v
-CapabilitySelection
+candidatos resumidos
     |
     v
 bash-generator
     |
+    +--> get_capability(id), quando necessário
+    |
     v
-ScriptArtifact
+Capability / ScriptArtifact
+    |
+    +--> reutiliza capability existente
+    |
+    +--> ou gera nova capability parametrizada
+    |
+    v
+validação
+    |
+    +--> nova capability válida -> catálogo
+    |
+    v
+resposta ao cliente
 ```
 
-## 1. request-normalizer
+## 1. Normalização
 
-Este agente deve utilizar um modelo pequeno.
+Um LLM pequeno converte a solicitação do usuário em uma `NormalizedRequest`.
 
-Responsabilidades:
+Ele não gera código e não consulta MCP.
 
-- compreender a frase original;
-- remover linguagem desnecessária;
-- manter valores concretos fornecidos pelo usuário;
-- identificar entradas;
-- identificar processamento;
-- identificar saída;
-- criar uma instrução curta em inglês;
-- criar uma intenção estável.
+## 2. Pesquisa
 
-Não deve:
+O `ai-bash-gen` consulta o Capability Catalog usando:
 
-- gerar código Bash;
-- consultar MCP;
-- executar comandos;
-- completar requisitos ausentes por conta própria.
+- intent;
+- canonical instruction;
+- input description;
+- output description.
 
-## 2. NormalizedRequest
+O retorno de cada candidato contém somente:
 
-Contrato inicial:
+- id;
+- type;
+- description;
+- match instruction;
+- input description;
+- output description.
 
-```json
-{
-  "canonical_instruction": "string",
-  "intent": "string",
-  "input": [],
-  "processing": [],
-  "output": []
-}
-```
+## 3. Escolha e detalhes
 
-### canonical_instruction
+O `bash-generator` compara os candidatos.
 
-Frase curta e objetiva em inglês.
-
-Exemplos:
+Quando precisa avaliar ou utilizar um candidato, chama:
 
 ```text
-List subdirectories in ~/ambiente.
-Compress /data into a gzip archive.
-Find files larger than 100 MB in /var/log.
-Read the latest invoice email from the configured mailbox.
+get_capability(id)
 ```
 
-### intent
+Essa chamada registra um evento append-only em `capability_usage`.
 
-Identificador técnico curto.
+## 4. Reutilização
 
-Exemplos:
+Se uma capability atende ao requisito, o gerador utiliza a implementação existente e aplica os valores concretos presentes na `NormalizedRequest`.
 
-```text
-list_subdirectories
-compress_directory
-find_large_files
-read_latest_invoice_email
-```
+## 5. Nova capability
 
-## 3. capability-discovery
+Se não existir uma capability adequada, o gerador produz uma nova função reutilizável.
 
-Recebe a `NormalizedRequest`.
+A função deve ser:
 
-Este agente pode consultar MCPs autorizados.
-
-Sua função não é gerar o script final.
-
-Ele deve localizar capacidades compatíveis e entregar uma lista estruturada ao gerador.
+- genérica;
+- parametrizada;
+- independente dos valores específicos da requisição;
+- documentada com entrada e saída;
+- validada antes de entrar no catálogo.
 
 Exemplo:
 
-```json
-{
-  "selected_capabilities": [
-    {
-      "id": "list-subdirectories",
-      "version": 1,
-      "reason": "Matches list_subdirectories intent and path input."
-    }
-  ]
-}
+```text
+User value:
+~/ambiente
+
+Reusable capability:
+list_subdirectories(base_path)
+
+Current invocation:
+list_subdirectories "$HOME/ambiente"
 ```
 
-## 4. bash-generator
+## 6. Catálogo crescente
 
-Recebe:
-
-- NormalizedRequest;
-- capacidades selecionadas;
-- informações retornadas por outros MCPs quando necessárias.
-
-Responsabilidades:
-
-- combinar capacidades;
-- gerar o script Bash;
-- declarar capacidades efetivamente utilizadas;
-- produzir `ScriptArtifact`.
-
-## Separação de responsabilidades
+Com o tempo:
 
 ```text
-request-normalizer
-    understands language
-
-capability-discovery
-    finds reusable capabilities
-
-MCP
-    exposes structured knowledge/tools
-
-bash-generator
-    produces the final script
-
-ai-bash-gen
-    validates, controls and records telemetry
+requisições novas
+      |
+      v
+capabilities reutilizadas
+      |
+      +--> menos código novo
+      |
+      +--> respostas mais previsíveis
+      |
+      +--> menor custo de inferência
 ```
 
-Essa separação permite trocar modelos individualmente e utilizar um modelo muito pequeno na normalização inicial.
+O catálogo deve evoluir de forma incremental sem transformar operações triviais de Bash em capabilities desnecessárias.
