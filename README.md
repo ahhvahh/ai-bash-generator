@@ -291,3 +291,97 @@ O contrato está em `proto/ai_bash_gen/v1/generation_service.proto`. Uma conexã
 O cliente oficial está no repositório `ai-bash-generator-client`. O cliente é responsável por gravar o artefato no filesystem do usuário; o daemon retorna somente `filename`, conteúdo e SHA-256.
 
 Estado atual: o transporte Unix Socket e o streaming de progresso estão implementados. Enquanto os estágios LLM ainda não estiverem conectados, o endpoint retorna explicitamente `PIPELINE_NOT_IMPLEMENTED`; não é produzido um script fictício.
+
+
+## Build, instalação e testes de aceitação
+
+O build gera o daemon e o utilitário de smoke test para a mesma arquitetura:
+
+```bash
+./build.sh amd64
+```
+
+Artefatos principais:
+
+```text
+bin/amd64/
+├── ai-bash-gen
+├── ai-bash-gen-generation-test
+├── install-binary.sh
+├── test-binary.sh
+└── test-generation.sh
+```
+
+O instalador valida explicitamente que o binário expõe:
+
+```text
+generate_socket=/run/ai-bash-gen/routes/generate.sock
+```
+
+Antes da instalação, em Debian/derivados, ele verifica os pacotes necessários ao instalador e aos testes de aceitação:
+
+```text
+bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils
+```
+
+Se algum estiver ausente, o instalador oferece executar `apt-get update` e `apt-get install`.
+
+O instalador também permite informar um usuário cliente. Esse usuário é incluído no grupo do serviço para conseguir atravessar `/run/ai-bash-gen/routes` e abrir sockets com modo `0660`. A nova associação de grupo requer uma nova sessão do usuário.
+
+### Teste do binário e do socket
+
+```bash
+./bin/amd64/test-binary.sh ./bin/amd64/ai-bash-gen
+```
+
+Além dos testes ELF/CLI, o teste sobe o daemon em um runtime temporário e verifica:
+
+- criação de `generate.sock`;
+- modo `0660` do socket;
+- modo `0750` do diretório `routes`;
+- presença de `generate_socket` em `--show-paths` e nos logs;
+- encerramento gracioso via `SIGTERM`;
+- presença dos componentes/pacotes usados pelo instalador e testes.
+
+### Smoke test de geração
+
+O pacote inclui 10 solicitações predefinidas, em ordem de complexidade crescente. Os scripts retornados **não são executados**. Para cada caso são verificados:
+
+- todas as cinco etapas do pipeline concluídas com `OK`;
+- filename seguro;
+- SHA-256, quando informado pelo servidor;
+- sintaxe com `bash -n`;
+- presença dos comandos que a própria solicitação exigiu.
+
+Executar todos os casos:
+
+```bash
+./bin/amd64/test-generation.sh
+```
+
+Usar outro socket:
+
+```bash
+./bin/amd64/test-generation.sh --socket /run/ai-bash-gen/routes/generate.sock
+```
+
+Executar um único caso:
+
+```bash
+./bin/amd64/test-generation.sh --case 06-tar-backup
+```
+
+Casos atuais:
+
+1. `echo`;
+2. `pwd`;
+3. `ls -la`;
+4. `df -h`;
+5. `find + sort + head`;
+6. backup de `/etc` com `tar`;
+7. consulta de serviço com `systemctl is-active`;
+8. processamento de `/etc/passwd` com `awk + sort + uniq`;
+9. sincronização segura com `rsync --dry-run`;
+10. backup robusto com `set -Eeuo pipefail`, `trap`, `mktemp`, `tar` e `sha256sum`.
+
+No estado atual do projeto, o pipeline LLM ainda não está conectado. Nesse caso o smoke test termina com código `3` e informa `PIPELINE_NOT_IMPLEMENTED`. Isso representa um bloqueio conhecido, não uma geração aprovada.
