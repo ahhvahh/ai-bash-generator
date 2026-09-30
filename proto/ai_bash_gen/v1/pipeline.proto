@@ -12,6 +12,13 @@ enum CapabilityType {
   CAPABILITY_TYPE_SERVICE = 4;
 }
 
+enum NormalizationStatus {
+  NORMALIZATION_STATUS_UNSPECIFIED = 0;
+  NORMALIZATION_STATUS_READY = 1;
+  NORMALIZATION_STATUS_MISSING_INFORMATION = 2;
+  NORMALIZATION_STATUS_UNSUPPORTED = 3;
+}
+
 enum GenerationStatus {
   GENERATION_STATUS_UNSPECIFIED = 0;
   GENERATION_STATUS_READY = 1;
@@ -20,13 +27,64 @@ enum GenerationStatus {
   GENERATION_STATUS_UNSUPPORTED = 4;
 }
 
+enum DataKind {
+  DATA_KIND_UNSPECIFIED = 0;
+  DATA_KIND_TEXT = 1;
+  DATA_KIND_INTEGER = 2;
+  DATA_KIND_DECIMAL = 3;
+  DATA_KIND_BOOLEAN = 4;
+  DATA_KIND_PATH = 5;
+  DATA_KIND_FILE = 6;
+  DATA_KIND_LIST = 7;
+  DATA_KIND_TABLE = 8;
+  DATA_KIND_BINARY = 9;
+}
+
+enum StreamEncoding {
+  STREAM_ENCODING_UNSPECIFIED = 0;
+  STREAM_ENCODING_TEXT_UTF8 = 1;
+  STREAM_ENCODING_JSON_LINES = 2;
+  STREAM_ENCODING_TSV = 3;
+  STREAM_ENCODING_NUL_DELIMITED = 4;
+  STREAM_ENCODING_RAW_BINARY = 5;
+}
+
+message FieldSchema {
+  string name = 1;
+  DataKind kind = 2;
+  bool required = 3;
+}
+
+message DataContract {
+  DataKind kind = 1;
+
+  // Used when kind == DATA_KIND_LIST.
+  DataKind element_kind = 2;
+
+  // Used when kind == DATA_KIND_TABLE.
+  repeated FieldSchema fields = 3;
+
+  // Encoding used on stdin/stdout when the value is streamed.
+  StreamEncoding encoding = 4;
+
+  bool nullable = 5;
+}
+
 message UserRequest {
   string text = 1;
+  string request_id = 2;
+}
+
+message MissingInput {
+  string task_id = 1;
+  string name = 2;
+  string description = 3;
+  DataContract contract = 4;
 }
 
 message TaskInput {
   string name = 1;
-  string type = 2;
+  DataContract contract = 2;
 
   oneof source {
     string literal = 3;
@@ -36,8 +94,7 @@ message TaskInput {
 
 message TaskOutput {
   string name = 1;
-  string type = 2;
-  repeated string fields = 3;
+  DataContract contract = 2;
 }
 
 message NormalizedTask {
@@ -47,6 +104,8 @@ message NormalizedTask {
   string output_description = 4;
   repeated TaskInput inputs = 5;
   TaskOutput output = 6;
+
+  // Control dependency only. Data dependencies are derived from result_ref.
   repeated string depends_on = 7;
 }
 
@@ -57,11 +116,37 @@ message NormalizedRequest {
   string output_description = 4;
   repeated NormalizedTask tasks = 5;
   string final_output_ref = 6;
+  NormalizationStatus status = 7;
+  repeated MissingInput missing_inputs = 8;
+}
+
+message SearchBudget {
+  uint32 composite_limit = 1;
+  uint32 per_task_limit = 2;
+  uint32 global_candidate_limit = 3;
+  uint32 max_capability_details = 4;
 }
 
 message SearchCapabilitiesRequest {
   NormalizedRequest request = 1;
-  uint32 limit = 2;
+  SearchBudget budget = 2;
+}
+
+message ParameterContract {
+  string name = 1;
+  DataContract contract = 2;
+  bool required = 3;
+}
+
+message CapabilityInterface {
+  // Chained capability data is consumed through stdin.
+  DataContract stdin_contract = 1;
+
+  // Literal/scalar configuration is passed as explicit arguments.
+  repeated ParameterContract arguments = 2;
+
+  // Functional result is produced on stdout.
+  DataContract stdout_contract = 3;
 }
 
 message CapabilityCandidate {
@@ -71,6 +156,9 @@ message CapabilityCandidate {
   string match_instruction = 4;
   string input_description = 5;
   string output_description = 6;
+
+  // Used by deterministic pruning. These fields may be omitted from the LLM view.
+  CapabilityInterface interface = 7;
 }
 
 message TaskCandidates {
@@ -85,21 +173,55 @@ message SearchCapabilitiesResponse {
 
 message CapabilityDetailRequest {
   string id = 1;
+
+  // When omitted, the catalog returns the active version.
+  optional uint32 version = 2;
+}
+
+message FunctionImplementation {
+  string function_name = 1;
+  string source = 2;
+}
+
+message ScriptImplementation {
+  string path = 1;
+  repeated string fixed_args = 2;
+}
+
+message ApplicationImplementation {
+  string executable_path = 1;
+  repeated string fixed_args = 2;
+}
+
+message ServiceImplementation {
+  string unix_socket = 1;
+  string operation = 2;
+  uint32 timeout_ms = 3;
+}
+
+message CapabilityImplementation {
+  oneof implementation {
+    FunctionImplementation function = 1;
+    ScriptImplementation script = 2;
+    ApplicationImplementation application = 3;
+    ServiceImplementation service = 4;
+  }
 }
 
 message CapabilityDefinition {
   string id = 1;
-  CapabilityType type = 2;
-  string description = 3;
-  string match_instruction = 4;
-  string input_description = 5;
-  string output_description = 6;
-  string function_name = 7;
-  string source = 8;
-  string input_contract = 9;
-  string output_contract = 10;
+  uint64 capability_version_id = 2;
+  uint32 version = 3;
+  CapabilityType type = 4;
+  string description = 5;
+  string match_instruction = 6;
+  string input_description = 7;
+  string output_description = 8;
+  CapabilityInterface interface = 9;
+  CapabilityImplementation implementation = 10;
   repeated string dependencies = 11;
   uint32 risk_level = 12;
+  string checksum = 13;
 }
 
 message ArgumentBinding {
@@ -107,6 +229,9 @@ message ArgumentBinding {
 
   oneof source {
     string literal = 2;
+
+    // Allowed only when the referenced output is scalar and the interface
+    // explicitly accepts the value as an argument.
     string result_ref = 3;
   }
 }
@@ -114,9 +239,16 @@ message ArgumentBinding {
 message CapabilityCall {
   string task_id = 1;
   string capability_id = 2;
-  string function_name = 3;
+
+  // Zero for a capability generated in the current request.
+  uint64 capability_version_id = 3;
+
   repeated ArgumentBinding arguments = 4;
-  string output_ref = 5;
+
+  // Primary stream composition path: producer stdout -> consumer stdin.
+  string stdin_result_ref = 5;
+
+  string output_ref = 6;
 }
 
 message GeneratedCapability {
@@ -126,30 +258,63 @@ message GeneratedCapability {
   string match_instruction = 4;
   string input_description = 5;
   string output_description = 6;
-  string function_name = 7;
-  string source = 8;
-  string input_contract = 9;
-  string output_contract = 10;
-  repeated string dependencies = 11;
+  CapabilityInterface interface = 7;
+  CapabilityImplementation implementation = 8;
+  repeated string dependencies = 9;
 }
 
-message GenerationRequest {
-  NormalizedRequest request = 1;
-  SearchCapabilitiesResponse candidates = 2;
-  repeated CapabilityDefinition capability_details = 3;
-}
-
-message GenerationResult {
+message GenerationPlan {
   GenerationStatus status = 1;
   repeated CapabilityCall calls = 2;
   repeated GeneratedCapability generated_capabilities = 3;
-  string script = 4;
-  string final_output_ref = 5;
-  repeated string warnings = 6;
+  string final_output_ref = 4;
+  repeated string warnings = 5;
+}
+
+message ToolError {
+  string code = 1;
+  string message = 2;
+}
+
+message GeneratorToolRequest {
+  string call_id = 1;
+
+  oneof request {
+    CapabilityDetailRequest get_capability = 2;
+  }
+}
+
+message GeneratorToolRequests {
+  repeated GeneratorToolRequest calls = 1;
+}
+
+message GeneratorToolResponse {
+  string call_id = 1;
+
+  oneof response {
+    CapabilityDefinition capability = 2;
+    ToolError error = 3;
+  }
+}
+
+message GeneratorTurnRequest {
+  string request_id = 1;
+  uint32 turn_number = 2;
+  NormalizedRequest request = 3;
+  SearchCapabilitiesResponse candidates = 4;
+  repeated GeneratorToolResponse tool_responses = 5;
+}
+
+message GeneratorTurnResult {
+  oneof result {
+    GeneratorToolRequests tool_requests = 1;
+    GenerationPlan final_plan = 2;
+  }
 }
 
 message ValidationRequest {
-  GenerationResult generation = 1;
+  GenerationPlan plan = 1;
+  repeated CapabilityDefinition resolved_capabilities = 2;
 }
 
 message ValidationIssue {
@@ -159,8 +324,22 @@ message ValidationIssue {
 
 message ValidationResult {
   bool valid = 1;
-  GenerationResult generation = 2;
-  repeated ValidationIssue issues = 3;
+  GenerationPlan plan = 2;
+  repeated CapabilityDefinition resolved_capabilities = 3;
+  repeated ValidationIssue issues = 4;
+}
+
+message CapabilityPublishRequest {
+  string request_id = 1;
+  string idempotency_key = 2;
+  GeneratedCapability capability = 3;
+}
+
+message CapabilityPublishResult {
+  string capability_id = 1;
+  uint64 capability_version_id = 2;
+  uint32 version = 3;
+  bool reused_existing = 4;
 }
 
 message BashOutputRequest {
