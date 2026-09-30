@@ -26,11 +26,11 @@ Nome lógico:
 capability-catalog
 ```
 
-O catálogo recebe uma `NormalizedRequest`, nunca a frase original do usuário.
+O catálogo recebe uma `NormalizedRequest` validada, nunca a frase original do usuário.
 
-A normalização é documentada separadamente em [pipeline/02_NORMALIZED_REQUEST.md](pipeline/02_NORMALIZED_REQUEST.md).
+A normalização é documentada em [pipeline/02_NORMALIZED_REQUEST.md](pipeline/02_NORMALIZED_REQUEST.md).
 
-O MCP é consultivo: ele pesquisa e entrega definições de capacidades, mas não executa scripts ou aplicações.
+O `ai-bash-gen` é o responsável pelo tool loop. O `llama-server` é apenas o motor de inferência.
 
 ### Fluxo
 
@@ -41,141 +41,179 @@ NormalizedRequest
 search_capabilities
         |
         v
-até N candidatos resumidos
+deterministic pruning
         |
         v
-LLM compara:
-- objetivo
-- entrada
-- saída
+LLM receives summarized candidates
         |
         v
-get_capability(id)
-        |
-        +--> append capability_usage
+GeneratorToolRequest(get_capability)
         |
         v
-definição completa
+ai-bash-gen Tool Orchestrator
+        |
+        v
+Capability Catalog
+        |
+        +--> resolve active immutable version
+        +--> append capability_usage(version_id, request_id)
+        |
+        v
+GeneratorToolResponse
 ```
+
+O mesmo `capability_version_id` é carregado no máximo uma vez por requisição. Requisições repetidas dentro do mesmo pipeline usam cache local.
 
 ### `search_capabilities`
 
-A pesquisa deve retornar somente informações suficientes para o LLM escolher o candidato mais adequado.
+A pesquisa possui duas fases:
 
-Entrada conceitual:
+```text
+1. candidate retrieval
+   intent + PostgreSQL Full Text Search
 
-```json
-{
-  "intent": "list_directory_items",
-  "instruction": "List directory items with name, size and permissions ordered by size descending.",
-  "input_description": "Directory path, selected fields, sort field and sort direction.",
-  "output_description": "Table containing name, size and permissions.",
-  "limit": 5
-}
+2. deterministic pruning
+   structured input/output compatibility
+   capability type
+   lifecycle status
+   platform/policy
 ```
 
-Resposta:
+Somente os candidatos restantes são apresentados ao LLM.
 
-```json
-{
-  "results": [
-    {
-      "id": "list-directory-details",
-      "type": "function",
-      "description": "List directory items with selectable metadata and sorting.",
-      "match_instruction": "List directory items with metadata and optional sorting.",
-      "input_description": "Directory path, selected fields, sort field and sort direction.",
-      "output_description": "Table containing one row per item with the selected fields."
-    }
-  ]
-}
+A busca tenta:
+
+1. capabilities compostas para a requisição completa;
+2. capabilities para cada tarefa individual.
+
+O contrato Protobuf usa `SearchBudget` para limitar o volume total:
+
+```text
+composite_limit
+per_task_limit
+global_candidate_limit
+max_capability_details
 ```
 
-Cada resultado deve conter somente:
+A visão textual entregue ao LLM continua curta:
 
-- `id`;
-- `type`;
-- `description`;
-- `match_instruction`;
-- `input_description`;
-- `output_description`.
+```text
+id
+type
+description
+match_instruction
+input_description
+output_description
+```
 
-Não retornar nessa etapa:
-
-- código;
-- endereço;
-- dependências;
-- contratos detalhados;
-- versão;
-- complexidade;
-- telemetria;
-- timestamps.
-
-A ideia é manter o payload pequeno, mas ainda permitir que o LLM diferencie capacidades parecidas pela entrada aceita e pela saída produzida.
+Os contratos estruturados ficam disponíveis para o pruner determinístico e não precisam ser repetidos no prompt quando já foram utilizados pela aplicação.
 
 ### `get_capability`
 
-Depois de escolher um candidato, o agente solicita sua definição completa:
+O gerador não chama o banco diretamente.
 
-```json
-{
-  "id": "list-directory-details"
-}
-```
+Ele retorna:
 
-Resposta conceitual:
-
-```json
-{
-  "id": "list-directory-details",
-  "type": "function",
-  "description": "List directory items with selectable metadata and sorting.",
-  "inputs": [
-    {
-      "name": "path",
-      "type": "path",
-      "required": true
-    },
-    {
-      "name": "fields",
-      "type": "list",
-      "allowed": ["name", "size", "permissions"]
-    },
-    {
-      "name": "sort_by",
-      "type": "string",
-      "allowed": ["name", "size"]
-    },
-    {
-      "name": "sort_order",
-      "type": "string",
-      "allowed": ["asc", "desc"]
+```textproto
+tool_requests {
+  calls {
+    call_id: "tool-1"
+    get_capability {
+      id: "list-directory-details"
     }
-  ],
-  "outputs": {
-    "type": "table",
-    "available_fields": ["name", "size", "permissions"]
-  },
-  "source": "list_directory_details() { ... }"
+  }
 }
 ```
 
-A chamada de `get_capability` representa interesse concreto do agente naquela capacidade e deve gerar um registro append-only em `capability_usage`.
+O `ai-bash-gen` executa a chamada e devolve um `GeneratorToolResponse`.
 
-### Tipos
+Quando `version` não for informado, o catálogo resolve a versão ativa.
 
-Valores iniciais:
+A resposta sempre identifica:
 
 ```text
-1 = function
-2 = script
-3 = application
-4 = service
+capability id
+capability_version_id
+version
+checksum
 ```
+
+Isso fixa exatamente qual implementação foi entregue ao gerador.
+
+### Tipos estruturados
+
+A compatibilidade não depende mais de strings como `"table"`.
+
+O contrato utiliza:
+
+```text
+DataKind
+DataContract
+FieldSchema
+StreamEncoding
+CapabilityInterface
+ParameterContract
+```
+
+Exemplo conceitual:
+
+```text
+stdin_contract:
+  kind = TABLE
+  fields = name,size,type
+  encoding = JSON_LINES
+
+stdout_contract:
+  kind = TABLE
+  fields = name,size,type
+  encoding = JSON_LINES
+```
+
+O canal entre capabilities permanece:
+
+```text
+producer stdout -> consumer stdin
+```
+
+A validação verifica tipo, campos e encoding antes de conectar duas capabilities.
+
+### Tipos de implementação
+
+`CapabilityImplementation` usa `oneof`:
+
+```text
+function
+script
+application
+service
+```
+
+Contratos iniciais:
+
+```text
+function
+  function_name
+  source
+
+script
+  path
+  fixed_args
+
+application
+  executable_path
+  fixed_args
+
+service
+  unix_socket
+  operation
+  timeout_ms
+```
+
+Serviços internos devem preferir Unix Domain Socket.
 
 ### PostgreSQL
 
-O catálogo utilizará PostgreSQL, preferencialmente por Unix Domain Socket local.
+O catálogo utilizará PostgreSQL por Unix Domain Socket local.
 
 ```yaml
 database:
@@ -186,44 +224,114 @@ database:
   sslmode: disable
 ```
 
-### Tabela de pesquisa
+### Identidade lógica
 
-A tabela usada por `search_capabilities` deve permanecer pequena:
+A tabela `capability` guarda somente a identidade pesquisável:
 
 ```sql
 CREATE TABLE capability (
     id                   INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     capability_key       TEXT NOT NULL UNIQUE,
     type                 SMALLINT NOT NULL,
-
     description          TEXT NOT NULL,
     match_instruction    TEXT NOT NULL,
     input_description    TEXT NOT NULL,
     output_description   TEXT NOT NULL,
-
     intent               TEXT,
-    enabled              BOOLEAN NOT NULL DEFAULT TRUE
+    enabled              BOOLEAN NOT NULL DEFAULT TRUE,
+    active_version_id    BIGINT
 );
 ```
 
-Consulta de retorno:
+### Versões imutáveis
+
+Cada alteração cria uma nova linha em `capability_version`.
+
+```sql
+CREATE TABLE capability_version (
+    id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    capability_id        INTEGER NOT NULL
+                         REFERENCES capability(id)
+                         ON DELETE CASCADE,
+
+    version              INTEGER NOT NULL,
+
+    status               SMALLINT NOT NULL DEFAULT 0,
+
+    language             TEXT,
+
+    input_contract       JSONB NOT NULL,
+    output_contract      JSONB NOT NULL,
+    processing           JSONB,
+
+    implementation       JSONB NOT NULL,
+    dependencies         JSONB,
+
+    risk_level           SMALLINT NOT NULL DEFAULT 0,
+    complexity_score     SMALLINT NOT NULL DEFAULT 1,
+
+    checksum             TEXT NOT NULL,
+    fingerprint          TEXT NOT NULL,
+
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    UNIQUE (capability_id, version)
+);
+```
+
+Depois da criação das duas tabelas:
+
+```sql
+ALTER TABLE capability
+ADD CONSTRAINT fk_capability_active_version
+FOREIGN KEY (active_version_id)
+REFERENCES capability_version(id);
+```
+
+### Status
+
+O status é mantido explicitamente.
+
+```text
+0 = candidate
+1 = validated
+2 = approved
+3 = active
+4 = deprecated
+5 = blocked
+```
+
+Uma capability só pode aparecer em `search_capabilities` quando:
+
+```text
+capability.enabled = TRUE
+AND capability.active_version_id IS NOT NULL
+AND capability_version.status = active
+```
+
+Exemplo conceitual:
 
 ```sql
 SELECT
-    capability_key AS id,
-    type,
-    description,
-    match_instruction,
-    input_description,
-    output_description
-FROM capability
-WHERE enabled = TRUE
+    c.capability_key AS id,
+    c.type,
+    c.description,
+    c.match_instruction,
+    c.input_description,
+    c.output_description
+FROM capability c
+JOIN capability_version v
+  ON v.id = c.active_version_id
+WHERE c.enabled = TRUE
+  AND v.status = 3
 LIMIT $1;
 ```
 
+Dessa forma versões `candidate`, `validated` ou `approved` nunca entram na busca normal.
+
 ### Pesquisa textual
 
-Como o texto interno é normalizado para inglês, usar Full Text Search do PostgreSQL.
+O índice textual continua sobre a tabela pequena de identidade.
 
 ```sql
 CREATE INDEX ix_capability_search
@@ -236,10 +344,11 @@ USING GIN (
         coalesce(output_description, '') || ' ' ||
         coalesce(description, '')
     )
-);
+)
+WHERE enabled = TRUE;
 ```
 
-Criar também índice parcial para intenção:
+Intenção:
 
 ```sql
 CREATE INDEX ix_capability_intent
@@ -247,159 +356,81 @@ ON capability (intent)
 WHERE enabled = TRUE;
 ```
 
-Prioridade de busca:
+A aplicação deve tentar intenção exata primeiro e executar FTS somente quando necessário ou quando ainda houver orçamento de candidatos.
 
-1. `intent` exato;
-2. `match_instruction`;
-3. `input_description`;
-4. `output_description`;
-5. `description`.
+### Telemetria append-only
 
-### Tabela de detalhes
-
-Dados grandes ou pouco acessados ficam separados:
-
-```sql
-CREATE TABLE capability_detail (
-    capability_id       INTEGER PRIMARY KEY
-                        REFERENCES capability(id)
-                        ON DELETE CASCADE,
-
-    version             SMALLINT NOT NULL DEFAULT 1,
-    language            TEXT,
-
-    input_contract      JSONB,
-    processing          JSONB,
-    output_contract     JSONB,
-
-    source_code         TEXT,
-    address             TEXT,
-    invocation          JSONB,
-    dependencies        JSONB,
-
-    risk_level          SMALLINT NOT NULL DEFAULT 0,
-    complexity_score    SMALLINT NOT NULL DEFAULT 1,
-
-    origin              SMALLINT NOT NULL DEFAULT 0,
-    status              SMALLINT NOT NULL DEFAULT 0,
-
-    checksum            TEXT,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
-
-Mapeamentos sugeridos:
-
-```text
-risk_level:
-0 = read_only
-1 = low
-2 = medium
-3 = high
-
-origin:
-0 = manual
-1 = generated
-
-status:
-0 = candidate
-1 = validated
-2 = active
-3 = deprecated
-```
-
-### Registro append-only
-
-Não manter contador atualizado na linha da capability.
-
-Registrar cada solicitação de conteúdo completo:
+O evento aponta para a versão imutável que realmente foi entregue.
 
 ```sql
 CREATE TABLE capability_usage (
-    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    capability_id  INTEGER NOT NULL
-                   REFERENCES capability(id),
-    requested_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    id                    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    capability_version_id BIGINT NOT NULL
+                          REFERENCES capability_version(id),
+    request_id            TEXT NOT NULL,
+    requested_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    UNIQUE (request_id, capability_version_id)
 );
 ```
 
-Ao executar `get_capability`:
+Semântica:
 
 ```text
-resolve capability
-      |
-      v
-INSERT capability_usage
-      |
-      v
-return capability_detail
+uma linha =
+esta requisição carregou o conteúdo completo desta versão
 ```
 
-O total pode ser calculado quando necessário:
-
-```sql
-SELECT
-    capability_id,
-    COUNT(*) AS usage_count
-FROM capability_usage
-GROUP BY capability_id;
-```
-
-Esse registro significa: **o agente solicitou o conteúdo completo da capacidade para avaliar ou utilizá-la**.
+O cache por requisição impede múltiplas leituras e múltiplos eventos para a mesma versão durante o mesmo processamento.
 
 `search_capabilities` não cria evento.
 
-### Capacidades geradas
+### Publicação idempotente
 
-Quando nenhuma capacidade existente atende adequadamente à `NormalizedRequest`, o gerador pode produzir uma nova função reutilizável.
+Publicar uma capability é uma operação independente da criação do arquivo Bash.
 
-A função deve ser genérica e parametrizada. Valores específicos da requisição não devem ficar fixos no código reutilizável.
-
-Exemplo:
+Fluxo:
 
 ```text
-Requisição:
-List directories inside ~/ambiente.
-
-Nova capability:
-list_subdirectories(base_path)
-
-Invocação específica:
-list_subdirectories "$HOME/ambiente"
+validated generation
+      |
+      +--> Capability Publisher
+      |      idempotency_key
+      |      fingerprint
+      |
+      +--> Bash Output
 ```
 
-Antes de entrar como ativa:
+O publisher recebe `CapabilityPublishRequest`.
+
+A aplicação calcula uma fingerprint canônica da interface e da implementação.
+
+Criar índice/constraint única para impedir publicação concorrente equivalente:
+
+```sql
+CREATE UNIQUE INDEX ux_capability_version_fingerprint
+ON capability_version (fingerprint)
+WHERE status IN (0, 1, 2, 3);
+```
+
+Uma colisão de fingerprint deve reutilizar a versão já publicada em vez de criar duplicata.
+
+A chave de idempotência garante que retry da mesma solicitação não publique novamente.
+
+### Separação PostgreSQL x filesystem
+
+Não existe tentativa de criar uma transação distribuída entre banco e filesystem.
+
+As duas operações são independentes e repetíveis:
 
 ```text
-generate
-   |
-   v
-deduplicate
-   |
-   v
-candidate
-   |
-   v
-validate
-   |
-   v
-active
+publish capability
+materialize BashArtifact
 ```
 
-A capability criada deve preencher também:
+Falha em uma não deve corromper o estado da outra.
 
-- `description`;
-- `match_instruction`;
-- `input_description`;
-- `output_description`;
-- contratos detalhados;
-- código ou endereço;
-- dependências;
-- risco;
-- origem `generated`.
-
-Isso permite que uma requisição futura reutilize a função sem nova geração.
+O cliente recebe os resultados dessas operações separadamente quando necessário.
 
 ## 2. Google Mail MCP
 
