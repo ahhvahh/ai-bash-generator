@@ -26,145 +26,100 @@ Nome lógico:
 capability-catalog
 ```
 
-O Capability Catalog MCP não recebe diretamente a frase original escrita pelo usuário.
+O catálogo recebe uma `NormalizedRequest`, nunca a frase original do usuário.
 
-Antes da consulta ao catálogo, a solicitação passa por um agente pequeno chamado inicialmente de `request-normalizer`.
+A normalização é documentada separadamente em [NORMALIZED_REQUEST.md](NORMALIZED_REQUEST.md).
 
-Esse agente converte a solicitação para uma representação objetiva em inglês, separada em:
+O MCP é consultivo: ele pesquisa e entrega definições de capacidades, mas não executa scripts ou aplicações.
 
-- input;
-- processing;
-- output;
-- canonical instruction.
-
-O inglês será utilizado como linguagem canônica interna do catálogo porque os comandos, nomes de ferramentas e documentação técnica utilizados pelo projeto normalmente já utilizam termos em inglês.
-
-### Exemplo
-
-Solicitação original:
+### Fluxo
 
 ```text
-preciso listar as pastas que estão dentro da pasta ~/ambiente
-```
-
-Resultado esperado do `request-normalizer`:
-
-```json
-{
-  "canonical_instruction": "List subdirectories in ~/ambiente.",
-  "intent": "list_subdirectories",
-  "input": [
-    {
-      "name": "base_path",
-      "type": "path",
-      "value": "~/ambiente"
-    }
-  ],
-  "processing": [
-    "Enumerate immediate child entries.",
-    "Keep directories only."
-  ],
-  "output": [
-    {
-      "name": "directories",
-      "type": "list<path>"
-    }
-  ]
-}
-```
-
-O agente seguinte recebe essa estrutura e consulta os MCPs autorizados para descobrir uma função, script, aplicação ou serviço que possa atender ao requisito.
-
-Fluxo:
-
-```text
-User text
-   |
-   v
-request-normalizer
-   |
-   v
 NormalizedRequest
-   |
-   | canonical English
-   v
-capability-discovery agent
-   |
-   v
-Capability Catalog MCP
-   |
-   +--> function
-   +--> script
-   +--> application
-   +--> service/address
-   |
-   v
-selected capabilities
-   |
-   v
-bash-generator
-   |
-   v
-ScriptArtifact
+        |
+        v
+search_capabilities
+        |
+        v
+até N candidatos resumidos
+        |
+        v
+LLM compara:
+- objetivo
+- entrada
+- saída
+        |
+        v
+get_capability(id)
+        |
+        +--> append capability_usage
+        |
+        v
+definição completa
 ```
 
-O catálogo não deve executar a capacidade encontrada. Ele apenas descreve como ela funciona e como poderá ser utilizada pelo gerador.
+### `search_capabilities`
 
-### Ferramentas MCP
+A pesquisa deve retornar somente informações suficientes para o LLM escolher o candidato mais adequado.
 
-#### `search_capabilities`
-
-Pesquisa capacidades usando a instrução normalizada.
-
-Entrada sugerida:
+Entrada conceitual:
 
 ```json
 {
-  "canonical_instruction": "List subdirectories in ~/ambiente.",
-  "intent": "list_subdirectories",
-  "input_types": ["path"],
-  "output_types": ["list<path>"],
-  "platform": "debian",
+  "intent": "list_directory_items",
+  "instruction": "List directory items with name, size and permissions ordered by size descending.",
+  "input_description": "Directory path, selected fields, sort field and sort direction.",
+  "output_description": "Table containing name, size and permissions.",
   "limit": 5
 }
 ```
 
-Resposta resumida:
+Resposta:
 
 ```json
 {
   "results": [
     {
-      "id": "list-subdirectories",
+      "id": "list-directory-details",
       "type": "function",
-      "description": "List immediate child directories of a given path.",
-      "match_instruction": "List subdirectories in a directory."
+      "description": "List directory items with selectable metadata and sorting.",
+      "match_instruction": "List directory items with metadata and optional sorting.",
+      "input_description": "Directory path, selected fields, sort field and sort direction.",
+      "output_description": "Table containing one row per item with the selected fields."
     }
   ]
 }
 ```
 
-A resposta de `search_capabilities` deve ser propositalmente mínima para reduzir o número de tokens e simplificar a interpretação por modelos pequenos.
-
-Cada resultado deve retornar somente:
+Cada resultado deve conter somente:
 
 - `id`;
 - `type`;
 - `description`;
-- `match_instruction`.
+- `match_instruction`;
+- `input_description`;
+- `output_description`.
 
-Informações como versão, nome amigável, linguagem, complexidade, contador de uso, código, endereço, dependências, entradas e saídas não devem ser retornadas nessa etapa.
+Não retornar nessa etapa:
 
-Depois que o agente selecionar um `id`, ele deve utilizar `get_capability` para obter a definição completa da capacidade.
+- código;
+- endereço;
+- dependências;
+- contratos detalhados;
+- versão;
+- complexidade;
+- telemetria;
+- timestamps.
 
-#### `get_capability`
+A ideia é manter o payload pequeno, mas ainda permitir que o LLM diferencie capacidades parecidas pela entrada aceita e pela saída produzida.
 
-Entrada:
+### `get_capability`
+
+Depois de escolher um candidato, o agente solicita sua definição completa:
 
 ```json
 {
-  "id": "list-subdirectories",
-  "version": 1
+  "id": "list-directory-details"
 }
 ```
 
@@ -172,92 +127,55 @@ Resposta conceitual:
 
 ```json
 {
-  "id": "list-subdirectories",
-  "version": 1,
+  "id": "list-directory-details",
   "type": "function",
-  "name": "List Subdirectories",
-  "description": "List immediate child directories of a given path.",
-  "match_instruction": "List subdirectories in a directory.",
-  "language": "bash",
-  "source": "list_subdirectories() { find \"$1\" -mindepth 1 -maxdepth 1 -type d -print; }",
+  "description": "List directory items with selectable metadata and sorting.",
   "inputs": [
     {
-      "name": "base_path",
+      "name": "path",
       "type": "path",
       "required": true
-    }
-  ],
-  "processing": [
-    "Enumerate immediate child entries.",
-    "Keep directories only."
-  ],
-  "outputs": [
+    },
     {
-      "name": "directories",
-      "type": "list<path>"
+      "name": "fields",
+      "type": "list",
+      "allowed": ["name", "size", "permissions"]
+    },
+    {
+      "name": "sort_by",
+      "type": "string",
+      "allowed": ["name", "size"]
+    },
+    {
+      "name": "sort_order",
+      "type": "string",
+      "allowed": ["asc", "desc"]
     }
   ],
-  "dependencies": ["find"],
-  "platforms": ["linux", "debian"],
-  "risk_level": "read_only",
-  "complexity_score": 1,
-  "usage_count": 42
+  "outputs": {
+    "type": "table",
+    "available_fields": ["name", "size", "permissions"]
+  },
+  "source": "list_directory_details() { ... }"
 }
 ```
 
-### Tipos de capacidade
+A chamada de `get_capability` representa interesse concreto do agente naquela capacidade e deve gerar um registro append-only em `capability_usage`.
+
+### Tipos
 
 Valores iniciais:
 
 ```text
-function
-script
-application
-service
+1 = function
+2 = script
+3 = application
+4 = service
 ```
 
-Uma capacidade poderá entregar:
+### PostgreSQL
 
-- código de função;
-- caminho de um script;
-- caminho de uma aplicação;
-- endereço interno de serviço;
-- informações de invocação.
-
-### Banco de dados
-
-O catálogo utilizará PostgreSQL.
-
-A prioridade dessa estrutura é manter a consulta de `search_capabilities` sobre a menor quantidade possível de dados. Para isso, separar os dados em três grupos:
-
-1. **índice de pesquisa**: somente os campos necessários para encontrar e apresentar uma capacidade;
-2. **detalhes da capacidade**: carregados apenas depois que o agente escolher um `id`;
-3. **estatísticas de uso**: mantidas fora da tabela de pesquisa para evitar atualizações frequentes nela.
-
-Fluxo esperado:
-
-```text
-search_capabilities
-        |
-        v
-capability
-(id, type, description, match_instruction)
-        |
-        v
-LLM escolhe um id
-        |
-        v
-get_capability
-        |
-        v
-capability_detail
-```
-
-#### Conexão
-
-Para uma instalação local, preferir PostgreSQL através de Unix Domain Socket.
-
-Exemplo de configuração:
+O catálogo utilizará PostgreSQL, preferencialmente por Unix Domain Socket local.
 
 ```yaml
 database:
@@ -268,84 +186,44 @@ database:
   sslmode: disable
 ```
 
-A aplicação não deve depender de uma porta PostgreSQL exposta externamente.
-
 ### Tabela de pesquisa
 
-A tabela `capability` deve permanecer pequena.
+A tabela usada por `search_capabilities` deve permanecer pequena:
 
 ```sql
 CREATE TABLE capability (
-    id                INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id                   INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    capability_key       TEXT NOT NULL UNIQUE,
+    type                 SMALLINT NOT NULL,
 
-    capability_key    TEXT NOT NULL UNIQUE,
+    description          TEXT NOT NULL,
+    match_instruction    TEXT NOT NULL,
+    input_description    TEXT NOT NULL,
+    output_description   TEXT NOT NULL,
 
-    type              SMALLINT NOT NULL,
-
-    description       TEXT NOT NULL,
-
-    match_instruction TEXT NOT NULL,
-
-    intent            TEXT,
-
-    enabled           BOOLEAN NOT NULL DEFAULT TRUE
+    intent               TEXT,
+    enabled              BOOLEAN NOT NULL DEFAULT TRUE
 );
 ```
 
-Mapeamento sugerido para `type`:
-
-```text
-1 = function
-2 = script
-3 = application
-4 = service
-```
-
-O uso de `SMALLINT` evita repetir strings como `function`, `script` e `application` em todas as linhas. O MCP converte esse valor para texto antes de responder ao agente.
-
-A consulta de `search_capabilities` deve selecionar somente:
+Consulta de retorno:
 
 ```sql
 SELECT
     capability_key AS id,
     type,
     description,
-    match_instruction
+    match_instruction,
+    input_description,
+    output_description
 FROM capability
-WHERE enabled = TRUE;
+WHERE enabled = TRUE
+LIMIT $1;
 ```
-
-A resposta MCP continua mínima:
-
-```json
-{
-  "results": [
-    {
-      "id": "list-subdirectories",
-      "type": "function",
-      "description": "List immediate child directories of a given path.",
-      "match_instruction": "List subdirectories in a directory."
-    }
-  ]
-}
-```
-
-Não incluir nessa consulta:
-
-- código-fonte;
-- endereço;
-- argumentos;
-- dependências;
-- contador de uso;
-- complexidade;
-- timestamps;
-- contratos de entrada e saída.
 
 ### Pesquisa textual
 
-Como todas as instruções internas são normalizadas para inglês, utilizar o mecanismo nativo de Full Text Search do PostgreSQL.
-
-Criar índice GIN por expressão sem adicionar uma coluna `tsvector` à tabela:
+Como o texto interno é normalizado para inglês, usar Full Text Search do PostgreSQL.
 
 ```sql
 CREATE INDEX ix_capability_search
@@ -354,12 +232,14 @@ USING GIN (
     to_tsvector(
         'english',
         coalesce(match_instruction, '') || ' ' ||
+        coalesce(input_description, '') || ' ' ||
+        coalesce(output_description, '') || ' ' ||
         coalesce(description, '')
     )
 );
 ```
 
-Para intenção exata:
+Criar também índice parcial para intenção:
 
 ```sql
 CREATE INDEX ix_capability_intent
@@ -367,190 +247,159 @@ ON capability (intent)
 WHERE enabled = TRUE;
 ```
 
-A pesquisa deve priorizar:
+Prioridade de busca:
 
-1. correspondência exata de `intent`;
-2. correspondência full-text de `match_instruction`;
-3. correspondência full-text de `description`.
-
-Exemplo conceitual:
-
-```sql
-SELECT
-    capability_key AS id,
-    type,
-    description,
-    match_instruction
-FROM capability
-WHERE
-    enabled = TRUE
-    AND (
-        intent = $1
-        OR
-        to_tsvector(
-            'english',
-            coalesce(match_instruction, '') || ' ' ||
-            coalesce(description, '')
-        ) @@ websearch_to_tsquery('english', $2)
-    )
-LIMIT $3;
-```
-
-GIN é o tipo de índice preferido pelo PostgreSQL para Full Text Search em consultas frequentes.
+1. `intent` exato;
+2. `match_instruction`;
+3. `input_description`;
+4. `output_description`;
+5. `description`.
 
 ### Tabela de detalhes
 
-Os dados maiores ficam em uma tabela separada e não participam de `search_capabilities`.
+Dados grandes ou pouco acessados ficam separados:
 
 ```sql
 CREATE TABLE capability_detail (
-    capability_id     INTEGER PRIMARY KEY
-                      REFERENCES capability(id)
-                      ON DELETE CASCADE,
+    capability_id       INTEGER PRIMARY KEY
+                        REFERENCES capability(id)
+                        ON DELETE CASCADE,
 
-    version           SMALLINT NOT NULL DEFAULT 1,
+    version             SMALLINT NOT NULL DEFAULT 1,
+    language            TEXT,
 
-    language          TEXT,
+    input_contract      JSONB,
+    processing          JSONB,
+    output_contract     JSONB,
 
-    input_contract    JSONB,
-    processing        JSONB,
-    output_contract   JSONB,
+    source_code         TEXT,
+    address             TEXT,
+    invocation          JSONB,
+    dependencies        JSONB,
 
-    source_code       TEXT,
-    address           TEXT,
-    invocation        JSONB,
-    dependencies      JSONB,
+    risk_level          SMALLINT NOT NULL DEFAULT 0,
+    complexity_score    SMALLINT NOT NULL DEFAULT 1,
 
-    risk_level        SMALLINT NOT NULL DEFAULT 0,
-    complexity_score  SMALLINT NOT NULL DEFAULT 1,
+    origin              SMALLINT NOT NULL DEFAULT 0,
+    status              SMALLINT NOT NULL DEFAULT 0,
 
-    checksum          TEXT
+    checksum            TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-Mapeamento sugerido para `risk_level`:
+Mapeamentos sugeridos:
 
 ```text
+risk_level:
 0 = read_only
 1 = low
 2 = medium
 3 = high
+
+origin:
+0 = manual
+1 = generated
+
+status:
+0 = candidate
+1 = validated
+2 = active
+3 = deprecated
 ```
 
-`get_capability` deve localizar primeiro o ID interno pela chave e então buscar o detalhe pela chave primária.
+### Registro append-only
 
-Exemplo:
+Não manter contador atualizado na linha da capability.
+
+Registrar cada solicitação de conteúdo completo:
+
+```sql
+CREATE TABLE capability_usage (
+    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    capability_id  INTEGER NOT NULL
+                   REFERENCES capability(id),
+    requested_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+Ao executar `get_capability`:
+
+```text
+resolve capability
+      |
+      v
+INSERT capability_usage
+      |
+      v
+return capability_detail
+```
+
+O total pode ser calculado quando necessário:
 
 ```sql
 SELECT
-    c.capability_key,
-    c.type,
-    c.description,
-    c.match_instruction,
-    d.version,
-    d.language,
-    d.input_contract,
-    d.processing,
-    d.output_contract,
-    d.source_code,
-    d.address,
-    d.invocation,
-    d.dependencies,
-    d.risk_level,
-    d.complexity_score,
-    d.checksum
-FROM capability c
-JOIN capability_detail d
-  ON d.capability_id = c.id
-WHERE c.capability_key = $1
-  AND c.enabled = TRUE;
-```
-
-Campos grandes, como `source_code`, permanecem fora da tabela de pesquisa. O PostgreSQL também pode comprimir ou mover valores grandes para armazenamento TOAST automaticamente, mantendo a linha principal menor.
-
-### Estatísticas de uso
-
-Não manter `usage_count` na tabela `capability`.
-
-O contador muda com frequência e não participa da pesquisa MCP. Mantê-lo separado evita alterar constantemente as linhas utilizadas pelo índice de pesquisa.
-
-```sql
-CREATE TABLE capability_stats (
-    capability_id INTEGER PRIMARY KEY
-                  REFERENCES capability(id)
-                  ON DELETE CASCADE,
-
-    usage_count   BIGINT NOT NULL DEFAULT 0,
-
-    last_used_at  TIMESTAMPTZ
-);
-```
-
-Atualização:
-
-```sql
-INSERT INTO capability_stats (
     capability_id,
-    usage_count,
-    last_used_at
-)
-VALUES ($1, 1, now())
-
-ON CONFLICT (capability_id)
-DO UPDATE SET
-    usage_count = capability_stats.usage_count + 1,
-    last_used_at = EXCLUDED.last_used_at;
+    COUNT(*) AS usage_count
+FROM capability_usage
+GROUP BY capability_id;
 ```
 
-Uma capacidade é considerada utilizada somente quando:
+Esse registro significa: **o agente solicitou o conteúdo completo da capacidade para avaliar ou utilizá-la**.
 
-1. foi selecionada pelo gerador;
-2. aparece no `ScriptArtifact`;
-3. o artefato foi validado;
-4. a geração terminou com sucesso.
+`search_capabilities` não cria evento.
 
-Consultar uma capacidade pelo MCP não incrementa o contador.
+### Capacidades geradas
 
-### Histórico opcional
+Quando nenhuma capacidade existente atende adequadamente à `NormalizedRequest`, o gerador pode produzir uma nova função reutilizável.
 
-O projeto precisa inicialmente do contador agregado, não de um registro permanente de cada consulta.
+A função deve ser genérica e parametrizada. Valores específicos da requisição não devem ficar fixos no código reutilizável.
 
-Caso seja necessário auditar usos individuais no futuro, criar uma tabela separada e opcional:
-
-```sql
-CREATE TABLE capability_usage_event (
-    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-
-    capability_id  INTEGER NOT NULL
-                   REFERENCES capability(id),
-
-    request_id     TEXT NOT NULL,
-
-    agent_id       TEXT NOT NULL,
-
-    used_at        TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
-
-Essa tabela não deve participar das consultas do MCP e poderá possuir política de retenção.
-
-### Estrutura final
+Exemplo:
 
 ```text
-capability
-    dados pequenos usados na pesquisa
-        |
-        +---- capability_detail
-        |       dados completos, carregados sob demanda
-        |
-        +---- capability_stats
-                contador e último uso
+Requisição:
+List directories inside ~/ambiente.
 
-capability_usage_event
-    opcional para auditoria
+Nova capability:
+list_subdirectories(base_path)
+
+Invocação específica:
+list_subdirectories "$HOME/ambiente"
 ```
 
-Essa separação mantém a operação mais frequente, `search_capabilities`, limitada a uma tabela pequena e indexada.
+Antes de entrar como ativa:
+
+```text
+generate
+   |
+   v
+deduplicate
+   |
+   v
+candidate
+   |
+   v
+validate
+   |
+   v
+active
+```
+
+A capability criada deve preencher também:
+
+- `description`;
+- `match_instruction`;
+- `input_description`;
+- `output_description`;
+- contratos detalhados;
+- código ou endereço;
+- dependências;
+- risco;
+- origem `generated`.
+
+Isso permite que uma requisição futura reutilize a função sem nova geração.
 
 ## 2. Google Mail MCP
 
