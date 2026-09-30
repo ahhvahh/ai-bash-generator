@@ -265,7 +265,6 @@ create_service_account() {
     ok "usuÃ¡rio criado: $user"
   fi
 }
-
 install_binary() {
   local source="$1" target="$2"
   local target_dir backup
@@ -311,6 +310,7 @@ prepare_directories() {
 
   ok "diretÃ³rios preparados."
 }
+
 
 create_bootstrap_config() {
   local config_dir="$1" group="$2" config_file temp_config
@@ -389,4 +389,138 @@ print_summary() {
 Resumo da instalaÃ§Ã£o
 ============================================================
 BinÃ¡rio de origem : $BIN_SOURCE
-BinÃ¡rio instalado : $BIN_TARGETø)½¹™¥ÕÉ‡Ÿ¼€€€€€€€è€‘=9%}%H)ÍÑ…‘¼Á•ÉÍ¥ÍÑ•¹Ñ”€è€‘MQQ}%H)IÕ¹Ñ¥µ”€€€€€€€€€€€€è€‘IU9Q%5}%H)UÍ×…É¥¼‘”Í•ÉÙ§¼€è€‘MIY%}UMH)ÉÕÁ¼‘”Í•ÉÙ§¼€€€è€‘MIY%}I=U@)É¥…È½¹Ñ„Í•ÉÙ§¼è€‘IQ}MIY%}=U9P)%¹ÍÑ…±…ÈÍåÍÑ•µ€€€è€‘%9MQ11}MeMQ5)½¹™¥œ‰½½ÑÍÑÉ…À€€€€è€‘íIQ}	==QMQIA}=9%èµ¹½ô)U¹¥ĞÍåÍÑ•µ€€€€€€€è€‘U9%Q}AQ (ôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôô)}}MU55Ie}|)ô()µ…¥¸ ¤ì(€…Í”€ˆ‘ìÄèµôˆ¥¸(€€€€µ¡ğ´µ¡•±Áñ¡•±À¤(€€€€€ÕÍ…”(€€€€€•á¥Ğ€À(€€€€€€ìì(€•Í…Œ((€É•ÅÕ¥É•}¥¹Ñ•É…Ñ¥Ù”((€ml€Œ€µ±”€ÄutñğìÕÍ…”€ø˜Èì•á¥Ğ€Èìô((€¡•­}‘•‰¥…¹}™…µ¥±ä(€Í•ÑÕÁ}ÁÉ¥Ù¥±••}½µµ…¹((€U1Q}	%9}M=UIôˆ‘ìÄè´¡‘•Ñ•Ñ}‰¥¹…Éå}‘•™…Õ±Ğ¥ôˆ((€•¡¼(€ÁÉ¥¹Ñ˜€œ•Í½¹™¥ÕÉ‡Ÿ¼¥¹Ñ•É…Ñ¥Ù„•Íq¸œ€ˆ‘}	=1ˆ€ˆ‘}IMPˆ(€•¡¼€‰…‘„Á…Ë‰µ•ÑÉ¼Í•Ë„½¹™¥Éµ…‘¼¥¹‘¥Ù¥‘Õ…±µ•¹Ñ”¸ˆ((€	%9}M=UIôˆ¡…Í­}Ù…±Õ”€…µ¥¹¡¼‘¼‰¥»…É¥¼½µÁ¥±…‘¼œ€ˆ‘U1Q}	%9}M=UIˆ¤ˆ(€ml€µ”€ˆ‘	%9}M=UIˆutñğ‘¥”€‰…ÉÅÕ¥Ù¼»¼•¹½¹ÑÉ…‘¼è€‘	%9}M=UIˆ(€	%9}M=UIôˆ¡…‰Í½±ÕÑ•}Á…Ñ €ˆ‘	%9}M=UIˆ¤ˆ(€½¹™¥Éµ}Ù…±Õ”€‰	¥»…É¥¼‘”½É¥•´ˆ€ˆ‘	%9}M=UIˆ((€	%9}QIPôˆ¡…Í­}Ù…±Õ”€•ÍÑ¥¹¼‘¼•á•ÕÓ…Ù•°œ€ˆ‘U1Q}	%9}QIPˆ¤ˆ(€½¹™¥Éµ}Ù…±Õ”€‰•ÍÑ¥¹¼‘¼•á•ÕÓ…Ù•°ˆ€ˆ‘	%9}QIPˆ((€=9%}%Hôˆ¡…Í­}Ù…±Õ”€¥É•ÓÍÉ¥¼‘”½¹™¥ÕÉ‡Ÿ¼œ€ˆ‘U1Q}=9%}%Hˆ¤ˆ(€½¹™¥Éµ}Ù…±Õ”€‰¥É•ÓÍÉ¥¼‘”½¹™¥ÕÉ‡Ÿ¼ˆ€ˆ‘=9%}%Hˆ((€MQQ}%Hôˆ¡…Í­}Ù…±Õ”€¥É•ÓÍÉ¥¼‘”•ÍÑ…‘¼Á•ÉÍ¥ÍÑ•¹Ñ”œ€ˆ‘U1Q}MQQ}%Hˆ¤ˆ(€½¹™¥Éµ}Ù…±Õ”€‰¥É•ÓÍÉ¥¼‘”•ÍÑ…‘¼ˆ€ˆ‘MQQ}%Hˆ((€IU9Q%5}%Hôˆ¡…Í­}Ù…±Õ”€¥É•ÓÍÉ¥¼‘”ÉÕ¹Ñ¥µ”œ€ˆ‘U1Q}IU9Q%5}%Hˆ¤ˆ(€½¹™¥Éµ}Ù…±Õ”€‰¥É•ÓÍÉ¥¼‘”ÉÕ¹Ñ¥µ”ˆ€ˆ‘IU9Q%5}%Hˆ((€MIY%}UMHôˆ¡…Í­}Ù…±Õ”€UÍ×…É¥¼‘”Í•ÉÙ§¼œ€ˆ‘U1Q}MIY%}UMHˆ¤ˆ(€½¹™¥Éµ}Ù…±Õ”€‰UÍ×…É¥¼‘”Í•ÉÙ§¼ˆ€ˆ‘MIY%}UMHˆ((€MIY%}I=U@ôˆ¡…Í­}Ù…±Õ”€ÉÕÁ¼‘”Í•ÉÙ§¼œ€ˆ‘U1Q}MIY%}I=U@ˆ¤ˆ(€½¹™¥Éµ}Ù…±Õ”€‰ÉÕÁ¼‘”Í•ÉÙ§¼ˆ€ˆ‘MIY%}I=U@ˆ(€¥˜…Í­}å•Í}¹¼€‰É¥…È½ÕÍ…ÈÕÍ×…É¥¼”ÉÕÁ¼‘”Í•ÉÙ§¼‘•‘¥…‘½Ìüˆ€‰dˆìÑ¡•¸(€€€IQ}MIY%}=U9Pô‰å•Ìˆ(€•±Í”(€€€IQ}MIY%}=U9Pô‰¹¼ˆ(€™¤(€½¹™¥Éµ}Ù…±Õ”€‰É¥…È½¹Ñ„‘”Í•ÉÙ§¼ˆ€ˆ‘IQ}MIY%}=U9Pˆ((€U9%Q}AQ ôˆ¡…Í­}Ù…±Õ”€…µ¥¹¡¼‘„Õ¹¥ĞÍåÍÑ•µœ€ˆ‘U1Q}U9%Q}AQ ˆ¤ˆ(€½¹™¥Éµ}Ù…±Õ”€‰U¹¥ĞÍåÍÑ•µˆ€ˆ‘U9%Q}AQ ˆ((€Ù…±¥‘…Ñ•}‰¥¹…Éä€ˆ‘	%9}M=UIˆ((€¥˜ÍÕÁÁ½ÉÑÍ}‘…•µ½¹}µ½‘”€ˆ‘	%9}M=UIˆìÑ¡•¸(€€€¥˜…Í­}å•Í}¹¼€‰<‰¥»…É¥¼ÍÕÁ½ÉÑ„€´µ½¹™¥œ¸%¹ÍÑ…±…ÈÍ•ÉÙ§¼ÍåÍÑ•µüˆ€‰dˆìÑ¡•¸(€€€€€%9MQ11}MeMQ5ô‰å•Ìˆ(€€€•±Í”(€€€€€%9MQ11}MeMQ5ô‰¹¼ˆ(€€€™¤(€•±Í”(€€€İ…É¸€‰¼‰¥»…É¥¼…ÑÕ…°;<•áÃÕ”€´µ½¹™¥œì•±”…¥¹‘„ƒ¤¼‰½½ÑÍÑÉ…À‘¼ÁÉ½©•Ñ¼¸ˆ(€€€İ…É¸€‰Õ´Í•ÉÙ§¼ÍåÍÑ•µÉ¥…‘¼…½É„•¹•ÉÉ…É¥„¥µ•‘¥…Ñ…µ•¹Ñ”•´Ù•è‘”…ÑÕ…È½µ¼‘…•µ½¸¸ˆ(€€€%9MQ11}MeMQ5ô‰¹¼ˆ(€€€¥¹™¼€‰ÍåÍÑ•µÍ•Ë„¥¹½É…‘¼¹•ÍÑ„¥¹ÍÑ…±‡Ÿ¼¸ˆ(€™¤(€½¹™¥Éµ}Ù…±Õ”€‰%¹ÍÑ…±…ÈÍ•ÉÙ§¼ÍåÍÑ•µˆ€ˆ‘%9MQ11}MeMQ5ˆ((€¥˜ml€ˆ‘%9MQ11}MeMQ5ˆ€ôô€‰å•Ìˆ€˜˜€ˆ‘IQ}MIY%}=U9Pˆ€„ô€‰å•ÌˆutìÑ¡•¸(€€€‘¥”€‰„¥¹ÍÑ…±‡Ÿ¼ÍåÍÑ•µÉ•ÅÕ•ÈÕÍ×…É¥¼½ÉÕÁ¼‘”Í•ÉÙ§¼‘•‘¥…‘½Ì¸ˆ(€™¤((€IQ}	==QMQIA}=9%ô‰¹¼ˆ(€¥˜ml€ˆ‘%9MQ11}MeMQ5ˆ€ôô€‰å•ÌˆutìÑ¡•¸(€€€¥˜ml€µ”€ˆ‘=9%}%H½½¹™¥œ¹å…µ°ˆutìÑ¡•¸(€€€€€IQ}	==QMQIA}=9%ô‰•á¥ÍÑ¥¹œˆ(€€€€€¥¹™¼€‰½¹™¥ÕÉ‡Ÿ¼•á¥ÍÑ•¹Ñ”Í•Ë„ÕÑ¥±¥é…‘„è€‘=9%}%H½½¹™¥œ¹å…µ°ˆ(€€€•±¥˜…Í­}å•Í}¹¼€‰½¹™¥œ¹å…µ°»¼•á¥ÍÑ”¸É¥…È½¹™¥ÕÉ‡Ÿ¼‰½½ÑÍÑÉ…Àüˆ€‰dˆìÑ¡•¸(€€€€€IQ}	==QMQIA}=9%ô‰å•Ìˆ(€€€•±Í”(€€€€€‘¥”€‰¼Í•ÉÙ§¼É•ÅÕ•È€‘=9%}%H½½¹™¥œ¹å…µ°¸ˆ(€€€™¤(€€€½¹™¥Éµ}Ù…±Õ”€‰½¹™¥ÕÉ‡Ÿ¼‰½½ÑÍÑÉ…Àˆ€ˆ‘IQ}	==QMQIA}=9%ˆ(€™¤((€ÁÉ¥¹Ñ}ÍÕµµ…Éä(€…Í­}å•Í}¹¼€‰á•ÕÑ…È„¥¹ÍÑ…±‡Ÿ¼½´•ÍÑ•ÌÁ…Ë‰µ•ÑÉ½Ìüˆ€‰8ˆñğ‘¥”€‰¥¹ÍÑ…±‡Ÿ¼…¹•±…‘„¸ˆ((€¥˜ml€ˆ‘IQ}MIY%}=U9Pˆ€ôô€‰å•ÌˆutìÑ¡•¸(€€€É•…Ñ•}Í•ÉÙ¥•}…½Õ¹Ğ€ˆ‘MIY%}UMHˆ€ˆ‘MIY%}I=U@ˆ€ˆ‘MQQ}%Hˆ(€™¤((€¥¹ÍÑ…±±}‰¥¹…Éä€ˆ‘	%9}M=UIˆ€ˆ‘	%9}QIPˆ(€ÁÉ•Á…É•}‘¥É•Ñ½É¥•Ì€ˆ‘=9%}%Hˆ€ˆ‘MQQ}%Hˆ€ˆ‘IU9Q%5}%Hˆ€ˆ‘MIY%}UMHˆ€ˆ‘MIY%}I=U@ˆ€ˆ‘IQ}MIY%}=U9Pˆ((€¥˜ml€ˆ‘%9MQ11}MeMQ5ˆ€ôô€‰å•ÌˆutìÑ¡•¸(€€€ml€ˆ‘IQ}MIY%}=U9Pˆ€ôô€‰å•Ìˆutñğ‘¥”€‰ÍåÍÑ•µÉ•ÅÕ•ÈÕÍ×…É¥¼½ÉÕÁ¼‘”Í•ÉÙ§¼‘•‘¥…‘½Ì¹•ÍÑ”¥¹ÍÑ…±…‘½È¸ˆ(€€€¥˜ml€ˆ‘IQ}	==QMQIA}=9%ˆ€ôô€‰å•ÌˆutìÑ¡•¸(€€€€€É•…Ñ•}‰½½ÑÍÑÉ…Á}½¹™¥œ€ˆ‘=9%}%Hˆ€ˆ‘MIY%}I=U@ˆ(€€€™¤((€€€É•…Ñ•}ÍåÍÑ•µ‘}Õ¹¥Ğ€ˆ‘U9%Q}AQ ˆ€ˆ‘	%9}QIPˆ€ˆ‘=9%}%Hˆ€ˆ‘MIY%}UMHˆ€ˆ‘MIY%}I=U@ˆ((€€€İ…É¸€‰¼Í•ÉÙ§¼»¼Í•Ë„¡…‰¥±¥Ñ…‘¼¹•´¥¹¥¥…‘¼…ÕÑ½µ…Ñ¥…µ•¹Ñ”¸ˆ(€€€¥¹™¼€‰É•Ù¥Í”ÁÉ¥µ•¥É¼è€‘=9%}%H½½¹™¥œ¹å…µ°ˆ(€€€¥¹™¼€‰‘•Á½¥Ì•á•ÕÑ”°Í”…ÁÉ½ÁÉ¥…‘¼èÍÕ‘¼ÍåÍÑ•µÑ°•¹…‰±”€´µ¹½Ü€‘AA}95ˆ(€™¤((€•¡¼(€½¬€‰¥¹ÍÑ…±‡Ÿ¼½¹±×µ‘„¸ˆ(€¥¹™¼€‰Ñ•ÍÑ”è€‘	%9}QIP€´µÙ•ÉÍ¥½¸ˆ(€¥¹™¼€‰…µ¥¹¡½Ìè€‘	%9}QIP€´µÍ¡½ÜµÁ…Ñ¡Ìˆ((€¥˜ml€ˆ‘%9MQ11}MeMQ5ˆ€ôô€‰¹¼ˆutìÑ¡•¸(€€€¥¹™¼€‰¹•¹¡Õ´Í•ÉÙ§¼ÍåÍÑ•µ™½¤¥¹ÍÑ…±…‘¼¸ˆ(€™¤)ô()µ…¥¸€ˆ‘ ˆ(
+BinÃ¡rio instalado : $BIN_TARGET
+ConfiguraÃ§Ã£o       : $CONFIG_DIR
+Estado persistente : $STATE_DIR
+Runtime            : $RUNTIME_DIR
+UsuÃ¡rio de serviÃ§o : $SERVICE_USER
+Grupo de serviÃ§o   : $SERVICE_GROUP
+Criar conta serviÃ§o: $CREATE_SERVICE_ACCOUNT
+Instalar systemd   : $INSTALL_SYSTEMD
+Config bootstrap    : ${CREATE_BOOTSTRAP_CONFIG:-no}
+Unit systemd       : $UNIT_PATH
+============================================================
+__SUMMARY__
+}
+
+main() {
+  case "${1:-}" in
+    -h|--help|help)
+      usage
+      exit 0
+      ;;
+  esac
+
+  require_interactive
+
+  [[ $# -le 1 ]] || { usage >&2; exit 2; }
+
+  check_debian_family
+  setup_privilege_command
+
+  DEFAULT_BIN_SOURCE="${1:-$(detect_binary_default)}"
+
+  echo
+  printf '%sConfiguraÃ§Ã£o interativa%s\n' "$C_BOLD" "$C_RESET"
+  echo "Cada parÃ¢metro serÃ¡ confirmado individualmente."
+
+  BIN_SOURCE="$(ask_value 'Caminho do binÃ¡rio compilado' "$DEFAULT_BIN_SOURCE")"
+  [[ -e "$BIN_SOURCE" ]] || die "arquivo nÃ£o encontrado: $BIN_SOURCE"
+  BIN_SOURCE="$(absolute_path "$BIN_SOURCE")"
+  confirm_value "BinÃ¡rio de origem" "$BIN_SOURCE"
+
+  BIN_TARGET="$(ask_value 'Destino do executÃ¡vel' "$DEFAULT_BIN_TARGET")"
+  confirm_value "Destino do executÃ¡vel" "$BIN_TARGET"
+
+  CONFIG_DIR="$(ask_value 'DiretÃ³rio de configuraÃ§Ã£o' "$DEFAULT_CONFIG_DIR")"
+  confirm_value "DiretÃ³rio de configuraÃ§Ã£o" "$CONFIG_DIR"
+
+  STATE_DIR="$(ask_value 'DiretÃ³rio de estado persistente' "$DEFAULT_STATE_DIR")"
+  confirm_value "DiretÃ³rio de estado" "$STATE_DIR"
+
+  RUNTIME_DIR="$(ask_value 'DiretÃ³rio de runtime' "$DEFAULT_RUNTIME_DIR")"
+  confirm_value "DiretÃ³rio de runtime" "$RUNTIME_DIR"
+
+  SERVICE_USER="$(ask_value 'UsuÃ¡rio de serviÃ§o' "$DEFAULT_SERVICE_USER")"
+  confirm_value "UsuÃ¡rio de serviÃ§o" "$SERVICE_USER"
+
+  SERVICE_GROUP="$(ask_value 'Grupo de serviÃ§o' "$DEFAULT_SERVICE_GROUP")"
+  confirm_value "Grupo de serviÃ§o" "$SERVICE_GROUP"
+
+  if ask_yes_no "Criar/usar usuÃ¡rio e grupo de serviÃ§o dedicados?" "Y"; then
+    CREATE_SERVICE_ACCOUNT="yes"
+  else
+    CREATE_SERVICE_ACCOUNT="no"
+  fi
+  confirm_value "Criar conta de serviÃ§o" "$CREATE_SERVICE_ACCOUNT"
+
+  UNIT_PATH="$(ask_value 'Caminho da unit systemd' "$DEFAULT_UNIT_PATH")"
+  confirm_value "Unit systemd" "$UNIT_PATH"
+
+  validate_binary "$BIN_SOURCE"
+
+  if supports_daemon_mode "$BIN_SOURCE"; then
+    if ask_yes_no "O binÃ¡rio suporta --config. Instalar serviÃ§o systemd?" "Y"; then
+      INSTALL_SYSTEMD="yes"
+    else
+      INSTALL_SYSTEMD="no"
+    fi
+  else
+    warn "o binÃ¡rio atual NÃƒO expÃµe --config; ele ainda Ã© o bootstrap do projeto."
+    warn "um serviÃ§o systemd criado agora encerraria imediatamente em vez de atuar como daemon."
+    INSTALL_SYSTEMD="no"
+    info "systemd serÃ¡ ignorado nesta instalaÃ§Ã£o."
+  fi
+  confirm_value "Instalar serviÃ§o systemd" "$INSTALL_SYSTEMD"
+
+  if [[ "$INSTALL_SYSTEMD" == "yes" && "$CREATE_SERVICE_ACCOUNT" != "yes" ]]; then
+    die "a instalaÃ§Ã£o systemd requer usuÃ¡rio/grupo de serviÃ§o dedicados."
+  fi
+
+  CREATE_BOOTSTRAP_CONFIG="no"
+  if [[ "$INSTALL_SYSTEMD" == "yes" ]]; then
+    if [[ -e "$CONFIG_DIR/config.yaml" ]]; then
+      CREATE_BOOTSTRAP_CONFIG="existing"
+      info "configuraÃ§Ã£o existente serÃ¡ utilizada: $CONFIG_DIR/config.yaml"
+    elif ask_yes_no "config.yaml nÃ£o existe. Criar configuraÃ§Ã£o bootstrap?" "Y"; then
+      CREATE_BOOTSTRAP_CONFIG="yes"
+    else
+      die "o serviÃ§o requer $CONFIG_DIR/config.yaml."
+    fi
+    confirm_value "ConfiguraÃ§Ã£o bootstrap" "$CREATE_BOOTSTRAP_CONFIG"
+  fi
+
+  print_summary
+  ask_yes_no "Executar a instalaÃ§Ã£o com estes parÃ¢metros?" "N" || die "instalaÃ§Ã£o cancelada."
+
+  if [[ "$CREATE_SERVICE_ACCOUNT" == "yes" ]]; then
+    create_service_account "$SERVICE_USER" "$SERVICE_GROUP" "$STATE_DIR"
+  fi
+
+  install_binary "$BIN_SOURCE" "$BIN_TARGET"
+  prepare_directories "$CONFIG_DIR" "$STATE_DIR" "$RUNTIME_DIR" "$SERVICE_USER" "$SERVICE_GROUP" "$CREATE_SERVICE_ACCOUNT"
+
+  if [[ "$INSTALL_SYSTEMD" == "yes" ]]; then
+    [[ "$CREATE_SERVICE_ACCOUNT" == "yes" ]] || die "systemd requer usuÃ¡rio/grupo de serviÃ§o dedicados neste instalador."
+    if [[ "$CREATE_BOOTSTRAP_CONFIG" == "yes" ]]; then
+      create_bootstrap_config "$CONFIG_DIR" "$SERVICE_GROUP"
+    fi
+
+    create_systemd_unit "$UNIT_PATH" "$BIN_TARGET" "$CONFIG_DIR" "$SERVICE_USER" "$SERVICE_GROUP"
+
+    warn "o serviÃ§o nÃ£o serÃ¡ habilitado nem iniciado automaticamente."
+    info "revise primeiro: $CONFIG_DIR/config.yaml"
+    info "depois execute, se apropriado: sudo systemctl enable --now $APP_NAME"
+  fi
+
+  echo
+  ok "instalaÃ§Ã£o concluÃ­da."
+  info "teste: $BIN_TARGET --version"
+  info "caminhos: $BIN_TARGET --show-paths"
+
+  if [[ "$INSTALL_SYSTEMD" == "no" ]]; then
+    info "nenhum serviÃ§o systemd foi instalado."
+  fi
+}
+
+main "$@"
