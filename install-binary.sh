@@ -787,7 +787,9 @@ main() {
   fi
 }
 
-main "$@"\n'* && "$value" != *
+if [[ "${AI_BASH_GEN_INSTALLER_LIB_ONLY:-0}" != "1" ]]; then
+  main "$@"
+fi\n'* && "$value" != *
 confirm_value() {
   local label="$1"
   local value="$2"
