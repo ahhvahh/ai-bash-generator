@@ -1,0 +1,149 @@
+syntax = "proto3";
+
+package ai_bash_gen.v1;
+
+option go_package = "github.com/ahhvahh/ai-bash-generator/gen/ai_bash_gen/v1;ai_bash_gen_v1";
+
+enum CapabilityType {
+  CAPABILITY_TYPE_UNSPECIFIED = 0;
+  CAPABILITY_TYPE_FUNCTION = 1;
+  CAPABILITY_TYPE_SCRIPT = 2;
+  CAPABILITY_TYPE_APPLICATION = 3;
+  CAPABILITY_TYPE_SERVICE = 4;
+}
+
+enum GenerationStatus {
+  GENERATION_STATUS_UNSPECIFIED = 0;
+  GENERATION_STATUS_READY = 1;
+  GENERATION_STATUS_MISSING_INFORMATION = 2;
+  GENERATION_STATUS_MISSING_CAPABILITY = 3;
+  GENERATION_STATUS_UNSUPPORTED = 4;
+}
+
+message UserRequest {
+  string text = 1;
+}
+
+message TaskInput {
+  string name = 1;
+  string type = 2;
+
+  oneof source {
+    string literal = 3;
+    string result_ref = 4;
+  }
+}
+
+message TaskOutput {
+  string name = 1;
+  string type = 2;
+  repeated string fields = 3;
+}
+
+message NormalizedTask {
+  string id = 1;
+  string instruction = 2;
+  string input_description = 3;
+  string output_description = 4;
+  repeated TaskInput inputs = 5;
+  TaskOutput output = 6;
+  repeated string depends_on = 7;
+}
+
+message NormalizedRequest {
+  string intent = 1;
+  string canonical_instruction = 2;
+  string input_description = 3;
+  string output_description = 4;
+  repeated NormalizedTask tasks = 5;
+  string final_output_ref = 6;
+}
+
+message SearchCapabilitiesRequest {
+  NormalizedRequest request = 1;
+  uint32 limit = 2;
+}
+
+message CapabilityCandidate {
+  string id = 1;
+  CapabilityType type = 2;
+  string description = 3;
+  string match_instruction = 4;
+  string input_description = 5;
+  string output_description = 6;
+}
+
+message TaskCandidates {
+  string task_id = 1;
+  repeated CapabilityCandidate candidates = 2;
+}
+
+message SearchCapabilitiesResponse {
+  repeated CapabilityCandidate composite_candidates = 1;
+  repeated TaskCandidates task_candidates = 2;
+}
+
+message CapabilityDetailRequest {
+  string id = 1;
+}
+
+message CapabilityDefinition {
+  string id = 1;
+  CapabilityType type = 2;
+  string description = 3;
+  string match_instruction = 4;
+  string input_description = 5;
+  string output_description = 6;
+  string function_name = 7;
+  string source = 8;
+  string input_contract = 9;
+  string output_contract = 10;
+  repeated string dependencies = 11;
+  uint32 risk_level = 12;
+}
+
+message ArgumentBinding {
+  string name = 1;
+
+  oneof source {
+    string literal = 2;
+    string result_ref = 3;
+  }
+}
+
+message CapabilityCall {
+  string task_id = 1;
+  string capability_id = 2;
+  string function_name = 3;
+  repeated ArgumentBinding arguments = 4;
+  string output_ref = 5;
+}
+
+message GeneratedCapability {
+  string id = 1;
+  CapabilityType type = 2;
+  string description = 3;
+  string match_instruction = 4;
+  string input_description = 5;
+  string output_description = 6;
+  string function_name = 7;
+  string source = 8;
+  string input_contract = 9;
+  string output_contract = 10;
+  repeated string dependencies = 11;
+}
+
+message GenerationRequest {
+  NormalizedRequest request = 1;
+  SearchCapabilitiesResponse candidates = 2;
+  repeated CapabilityDefinition capability_details = 3;
+}
+
+message GenerationResult {
+  GenerationStatus status = 1;
+  repeated CapabilityCall calls = 2;
+  repeated GeneratedCapability generated_capabilities = 3;
+  string script = 4;
+  string final_output_ref = 5;
+  repeated string warnings = 6;
+}
