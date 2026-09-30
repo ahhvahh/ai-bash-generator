@@ -27,15 +27,13 @@ Ele não:
 ```proto
 message UserRequest {
   string text = 1;
-  string request_id = 2;
 }
 ```
 
-Visão TextProto:
+Visão TextProto. O `request_id` interno é criado pelo `ai-bash-gen` depois que a requisição é aceita e não é controlado pelo cliente:
 
 ```textproto
 text: "liste os itens de ~/ambiente com nome, tamanho e tipo; mantenha apenas executáveis e ordene por tamanho"
-request_id: "..."
 ```
 
 ## Saída
