@@ -115,7 +115,13 @@ ai-bash-gen
    +-- Agent Manager
    +-- Pipeline Manager
    +-- Tool/MCP Orchestrator
+   |      |
+   |      +--> Capability Catalog MCP
+   |      +--> Google Mail MCP
+   |
    +-- Schema Validator
+   +-- Capability Publisher
+   +-- Bash Output
    +-- Telemetry
    |
    | HTTP sobre Unix Socket
@@ -124,9 +130,6 @@ ai-bash-gen
    |
    v
 llama-server
-   |
-   +-- MCP: function-catalog
-   +-- MCP: google-mail
 ```
 
 ## Pipeline inicial
@@ -146,14 +149,15 @@ search_capabilities
         v
 bash-generator
         |
-        +--> reutiliza capability existente
+        +--> tool loop controlado pelo ai-bash-gen
         |
-        +--> ou gera nova capability parametrizada
+        v
+GenerationPlan
         |
         v
 validation
         |
-        +--> capability nova válida retorna ao catálogo
+        +--> Capability Publisher (idempotente)
         |
         v
 bash-output
