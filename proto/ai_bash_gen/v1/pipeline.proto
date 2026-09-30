@@ -72,7 +72,9 @@ message DataContract {
 
 message UserRequest {
   string text = 1;
-  string request_id = 2;
+
+  // request_id is generated internally by ai-bash-gen and is not client-controlled.
+  reserved 2;
 }
 
 message MissingInput {
@@ -186,17 +188,24 @@ message FunctionImplementation {
 message ScriptImplementation {
   string path = 1;
   repeated string fixed_args = 2;
+  string expected_sha256 = 3;
 }
 
 message ApplicationImplementation {
   string executable_path = 1;
   repeated string fixed_args = 2;
+  string expected_sha256 = 3;
 }
 
 message ServiceImplementation {
   string unix_socket = 1;
   string operation = 2;
   uint32 timeout_ms = 3;
+
+  // Controlled client responsible for speaking the service protocol.
+  string client_executable = 4;
+  repeated string fixed_args = 5;
+  string client_expected_sha256 = 6;
 }
 
 message CapabilityImplementation {
