@@ -267,9 +267,10 @@ check_client_session_group() {
   if session_user_has_group "$user" "$group"; then
     ok "sessão atual de $user já possui o grupo $group."
     return 0
+  else
+    rc=$?
   fi
 
-  rc=$?
   if [[ "$rc" -eq 1 ]]; then
     CLIENT_SESSION_REFRESH_REQUIRED="yes"
     warn "o cadastro de $user no grupo $group está correto, mas a sessão atual ainda não recebeu esse grupo."
