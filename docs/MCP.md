@@ -247,18 +247,25 @@ function
 script
   path
   fixed_args
+  expected_sha256
 
 application
   executable_path
   fixed_args
+  expected_sha256
 
 service
   unix_socket
   operation
   timeout_ms
+  client_executable
+  fixed_args
+  client_expected_sha256
 ```
 
 Serviços internos devem preferir Unix Domain Socket.
+
+Scripts e aplicações externas são tratados como parte de uma versão imutável somente quando o checksum esperado continua válido. O Validator deve comparar o arquivo atual com `expected_sha256`. Para serviços, a versão representa o contrato do serviço e o cliente controlado; o cliente executável também possui checksum esperado.
 
 ### PostgreSQL
 
