@@ -12,6 +12,8 @@ DEFAULT_SERVICE_USER="${APP_NAME}"
 DEFAULT_SERVICE_GROUP="${APP_NAME}"
 DEFAULT_UNIT_PATH="/etc/systemd/system/${APP_NAME}.service"
 
+REQUIRED_DEBIAN_PACKAGES=(bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils)
+
 C_RESET=""
 C_RED=""
 C_GREEN=""
@@ -45,11 +47,13 @@ Uso:
 Características:
   - exige terminal interativo;
   - confirma cada parâmetro antes da instalação;
-  - valida o binário usando --version e --show-paths;
+  - valida o binário usando --version e --show-paths, incluindo generate_socket;
   - instala o executável em /usr/local/bin por padrão;
   - usa /etc, /var/lib e /run conforme o layout definido pelo projeto;
   - cria usuário/grupo de serviço dedicados somente se solicitado;
   - só cria serviço systemd se o binário suportar --config;
+  - verifica dependências Debian e oferece instalar pacotes ausentes;
+  - pode autorizar um usuário cliente no grupo do serviço;
   - não altera arquivos do projeto-fonte.
 __USAGE__
 }
@@ -126,6 +130,77 @@ setup_privilege_command() {
   SUDO=(sudo)
   info "operações administrativas usarão sudo."
 }
+package_installed() {
+  local package="$1"
+  command -v dpkg-query >/dev/null 2>&1 || return 1
+  dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -Fxq 'install ok installed'
+}
+
+ensure_debian_packages() {
+  local package
+  local -a missing=()
+
+  if ! command -v dpkg-query >/dev/null 2>&1; then
+    warn "dpkg-query não encontrado; validação de pacotes Debian será ignorada."
+    return 0
+  fi
+
+  for package in "${REQUIRED_DEBIAN_PACKAGES[@]}"; do
+    package_installed "$package" || missing+=("$package")
+  done
+
+  if [[ ${#missing[@]} -eq 0 ]]; then
+    ok "dependências Debian instaladas: ${REQUIRED_DEBIAN_PACKAGES[*]}"
+    return 0
+  fi
+
+  warn "pacotes Debian ausentes: ${missing[*]}"
+  command -v apt-get >/dev/null 2>&1 || die "apt-get não encontrado; instale manualmente: ${missing[*]}"
+
+  ask_yes_no "Instalar os pacotes ausentes agora?" "Y" || {
+    die "dependências obrigatórias ausentes: ${missing[*]}"
+  }
+
+  "${SUDO[@]}" apt-get update
+  "${SUDO[@]}" apt-get install -y -- "${missing[@]}"
+  ok "dependências Debian instaladas."
+}
+
+detect_client_user() {
+  local candidate=""
+
+  if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+    candidate="$SUDO_USER"
+  elif [[ "$EUID" -ne 0 ]]; then
+    candidate="$(id -un)"
+  elif command -v logname >/dev/null 2>&1; then
+    candidate="$(logname 2>/dev/null || true)"
+    [[ "$candidate" == "root" ]] && candidate=""
+  fi
+
+  printf '%s\n' "$candidate"
+}
+
+authorize_client_user() {
+  local user="$1" group="$2" usermod_cmd
+
+  [[ -n "$user" ]] || return 0
+  id "$user" >/dev/null 2>&1 || die "usuário cliente não existe: $user"
+  getent group "$group" >/dev/null 2>&1 || die "grupo de serviço não existe: $group"
+
+  usermod_cmd="$(resolve_system_command usermod)" || {
+    die "usermod não encontrado. No Debian, ele é fornecido pelo pacote 'passwd'."
+  }
+
+  if id -nG "$user" | tr ' ' '\n' | grep -Fxq "$group"; then
+    info "usuário $user já pertence ao grupo $group"
+    return 0
+  fi
+
+  "${SUDO[@]}" "$usermod_cmd" -aG "$group" "$user"
+  ok "usuário $user adicionado ao grupo $group"
+  warn "o usuário $user precisa iniciar uma nova sessão para receber o novo grupo."
+}
 
 absolute_path() {
   local p="$1"
@@ -192,6 +267,7 @@ validate_binary() {
   grep -Fxq "runtime_dir=$DEFAULT_RUNTIME_DIR" <<<"$paths_output" || die "runtime_dir do binário não corresponde a $DEFAULT_RUNTIME_DIR"
   grep -Fxq "routes_dir=$DEFAULT_RUNTIME_DIR/routes" <<<"$paths_output" || die "routes_dir do binário não corresponde ao layout esperado"
   grep -Fxq "llama_socket=$DEFAULT_RUNTIME_DIR/internal/llama.sock" <<<"$paths_output" || die "llama_socket do binário não corresponde ao layout esperado"
+  grep -Fxq "generate_socket=$DEFAULT_RUNTIME_DIR/routes/generate.sock" <<<"$paths_output" || die "generate_socket ausente ou incompatível; o binário não contém a entrada de geração esperada"
 
   ok "binário validado."
 }
@@ -395,6 +471,7 @@ Estado persistente : $STATE_DIR
 Runtime            : $RUNTIME_DIR
 Usuário de serviço : $SERVICE_USER
 Grupo de serviço   : $SERVICE_GROUP
+Usuário cliente    : ${CLIENT_USER:-nenhum}
 Criar conta serviço: $CREATE_SERVICE_ACCOUNT
 Instalar systemd   : $INSTALL_SYSTEMD
 Config bootstrap    : ${CREATE_BOOTSTRAP_CONFIG:-no}
@@ -417,6 +494,7 @@ main() {
 
   check_debian_family
   setup_privilege_command
+  ensure_debian_packages
 
   DEFAULT_BIN_SOURCE="${1:-$(detect_binary_default)}"
 
@@ -453,6 +531,14 @@ main() {
     CREATE_SERVICE_ACCOUNT="no"
   fi
   confirm_value "Criar conta de serviço" "$CREATE_SERVICE_ACCOUNT"
+
+  DEFAULT_CLIENT_USER="$(detect_client_user)"
+  CLIENT_USER="$(ask_value 'Usuário cliente autorizado a consumir os sockets (vazio = nenhum)' "$DEFAULT_CLIENT_USER")"
+  if [[ -n "$CLIENT_USER" ]]; then
+    confirm_value "Usuário cliente" "$CLIENT_USER"
+  else
+    info "nenhum usuário cliente será adicionado ao grupo do serviço."
+  fi
 
   UNIT_PATH="$(ask_value 'Caminho da unit systemd' "$DEFAULT_UNIT_PATH")"
   confirm_value "Unit systemd" "$UNIT_PATH"
@@ -497,6 +583,10 @@ main() {
     create_service_account "$SERVICE_USER" "$SERVICE_GROUP" "$STATE_DIR"
   fi
 
+  if [[ -n "$CLIENT_USER" ]]; then
+    authorize_client_user "$CLIENT_USER" "$SERVICE_GROUP"
+  fi
+
   install_binary "$BIN_SOURCE" "$BIN_TARGET"
   prepare_directories "$CONFIG_DIR" "$STATE_DIR" "$RUNTIME_DIR" "$SERVICE_USER" "$SERVICE_GROUP" "$CREATE_SERVICE_ACCOUNT"
 
@@ -517,6 +607,7 @@ main() {
   ok "instalação concluída."
   info "teste: $BIN_TARGET --version"
   info "caminhos: $BIN_TARGET --show-paths"
+  info "socket esperado: $RUNTIME_DIR/routes/generate.sock"
 
   if [[ "$INSTALL_SYSTEMD" == "no" ]]; then
     info "nenhum serviço systemd foi instalado."
