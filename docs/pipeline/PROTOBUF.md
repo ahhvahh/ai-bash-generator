@@ -2,47 +2,81 @@
 
 ## Objetivo
 
-O Protobuf é o contrato canônico de dados do pipeline.
+O Protobuf é o contrato canônico do pipeline.
 
-Schema principal:
+Schema:
 
 ```text
 ../../proto/ai_bash_gen/v1/pipeline.proto
 ```
 
-## Regra principal
-
-Existem duas representações:
+## Representações
 
 ```text
 entre componentes
     Protobuf binário
 
-entre ai-bash-gen e LLM
+fronteira ai-bash-gen <-> LLM
     Protobuf Text Format
 ```
 
-O LLM não recebe bytes Protobuf diretamente.
+Não enviar Protobuf binário em Base64 ao modelo.
 
-Também não usar:
+## Tipos estruturados
+
+A composição utiliza:
 
 ```text
-binary protobuf
-      |
-      v
-base64
-      |
-      v
-prompt
+DataKind
+DataContract
+FieldSchema
+StreamEncoding
+CapabilityInterface
+ParameterContract
 ```
 
-Base64 aumenta o conteúdo textual e remove significado legível para o modelo.
+Exemplo:
+
+```textproto
+contract {
+  kind: DATA_KIND_TABLE
+  encoding: STREAM_ENCODING_JSON_LINES
+
+  fields { name: "name" kind: DATA_KIND_TEXT required: true }
+  fields { name: "size" kind: DATA_KIND_INTEGER required: true }
+}
+```
+
+Isso permite validação determinística entre stdout e stdin.
+
+## Turnos do gerador
+
+O gerador não é uma chamada única.
+
+```text
+GeneratorTurnRequest
+      |
+      v
+GeneratorTurnResult
+      |
+      +--> GeneratorToolRequests
+      |        |
+      |        v
+      |    GeneratorToolResponse
+      |        |
+      +--------+
+      |
+      v
+GenerationPlan
+```
+
+Tools de catálogo e MCPs generation-time passam sempre pelo Tool Orchestrator do `ai-bash-gen`.
 
 ## Entrada do LLM
 
-O `ai-bash-gen` recebe ou constrói uma mensagem Protobuf e cria uma visão mínima para a etapa atual.
+A aplicação cria uma visão mínima da mensagem.
 
-Exemplo em Go, conceitualmente:
+Em Go, conceitualmente:
 
 ```go
 text, err := prototext.MarshalOptions{
@@ -50,93 +84,93 @@ text, err := prototext.MarshalOptions{
 }.Marshal(message)
 ```
 
-Somente campos necessários à etapa devem ser incluídos.
+Campos internos já processados deterministicamente podem ser omitidos da visão entregue ao modelo.
 
 ## Saída do LLM
 
-O prompt exige somente TextProto compatível com a mensagem esperada.
-
-A aplicação converte:
-
 ```text
-LLM text
-   |
-   v
+LLM TextProto
+     |
+     v
 prototext.Unmarshal
-   |
-   v
+     |
+     v
 protobuf message
-   |
-   v
+     |
+     v
 semantic validation
 ```
 
-Uma resposta que não possa ser convertida para a mensagem esperada é inválida.
+Estrutura Protobuf não implica autorização ou correção semântica.
 
 ## Economia de tokens
 
-Protobuf binário reduz tamanho no IPC e armazenamento, mas não reduz diretamente tokens do LLM.
+Protobuf binário reduz IPC e armazenamento.
 
-Para reduzir tokens do modelo:
+TextProto não possui economia de tokens comprovada.
 
-1. enviar somente a mensagem necessária à etapa;
-2. omitir campos padrão;
-3. limitar candidatos;
-4. usar nomes de campos curtos, mas semanticamente claros;
-5. não repetir conteúdo já referenciado por `result_ref`;
-6. não enviar código durante `search_capabilities`;
-7. recuperar detalhes somente por `get_capability`;
-8. não enviar telemetria ao modelo;
-9. não enviar metadados internos como timestamps ou IDs de banco.
+A estratégia atual reduz contexto por:
 
-## Envelopes internos
+1. divisão do pipeline em etapas;
+2. `result_ref` em vez de copiar resultados;
+3. candidate budget;
+4. deterministic pruning antes do LLM;
+5. resumo de candidates;
+6. detalhes somente por `get_capability`;
+7. cache por request/version;
+8. omissão de telemetria e metadados operacionais.
 
-Metadados operacionais como:
+A comparação TextProto x JSON compacto permanece sujeita a benchmark com o tokenizer real do modelo.
 
-```text
-request_id
-pipeline_id
-timestamps
-trace_id
-```
-
-devem permanecer no envelope interno da aplicação quando o LLM não precisar deles.
-
-Isso evita gastar contexto com informações sem valor semântico para a inferência.
-
-## Protobuf Text Format
+## Result refs
 
 Exemplo:
 
 ```textproto
-tasks {
-  id: "filter_executables"
-  instruction: "Keep executable files only."
+inputs {
+  name: "source"
 
-  inputs {
-    name: "source"
-    type: "table"
-    result_ref: "resultList"
+  contract {
+    kind: DATA_KIND_TABLE
+    encoding: STREAM_ENCODING_JSON_LINES
   }
 
-  output {
-    name: "filteredList"
-    type: "table"
-  }
+  result_ref: "resultList"
 }
 ```
 
-Comparado a transportar novamente todos os itens de `resultList`, a referência custa poucos tokens e mantém o grafo de dados explícito.
+No plano de execução, o stream principal é materializado como:
+
+```text
+producer stdout -> consumer stdin
+```
+
+Não é necessário copiar o conteúdo de `resultList` para o prompt ou para uma variável Bash.
+
+## Tool payloads de MCP
+
+MCPs generation-time genéricos utilizam:
+
+```text
+ToolPayload
+  schema
+  textproto
+```
+
+`schema` identifica o tipo Protobuf específico do MCP.
+
+A string TextProto existe apenas na fronteira com o LLM; processos internos podem usar a mensagem Protobuf concreta correspondente.
 
 ## Segurança
 
-TextProto produzido pelo LLM continua sendo conteúdo não confiável.
+Toda resposta do LLM passa por:
 
-Depois de `prototext.Unmarshal`, a aplicação deve executar validação semântica antes de:
+- parsing;
+- validação do schema;
+- validação semântica;
+- allowlist;
+- limites;
+- política;
+- validação de contratos.
 
-- consultar MCPs;
-- montar scripts;
-- persistir capabilities;
-- acessar serviços externos.
-
-Protobuf garante estrutura. Não garante que o conteúdo seja correto ou autorizado.
+Protobuf garante estrutura. Não garante confiança.
