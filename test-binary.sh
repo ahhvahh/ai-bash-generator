@@ -34,7 +34,7 @@ resolve_component() {
 
 check_required_components() {
   local name path
-  local -a required=(bash grep awk sha256sum install getent groupadd useradd usermod nologin systemctl)
+  local -a required=(bash grep awk sha256sum install getent groupadd useradd usermod runuser nologin systemctl)
   echo
   echo "---------------- Dependências/componentes ----------------"
   for name in "${required[@]}"; do
