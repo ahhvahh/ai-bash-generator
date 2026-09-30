@@ -276,3 +276,18 @@ Próximas etapas:
 - implementar Google Mail MCP;
 - integrar `llama.cpp`;
 - adicionar testes de segurança e integração.
+
+
+## Cliente de geração e observabilidade
+
+A entrada externa de geração é um Unix Domain Socket:
+
+```text
+/run/ai-bash-gen/routes/generate.sock
+```
+
+O contrato está em `proto/ai_bash_gen/v1/generation_service.proto`. Uma conexão recebe um `GenerateRequest` e o servidor responde com uma sequência de `GenerateEvent`: eventos de progresso por estágio e, ao final, um `GenerateResult`.
+
+O cliente oficial está no repositório `ai-bash-generator-client`. O cliente é responsável por gravar o artefato no filesystem do usuário; o daemon retorna somente `filename`, conteúdo e SHA-256.
+
+Estado atual: o transporte Unix Socket e o streaming de progresso estão implementados. Enquanto os estágios LLM ainda não estiverem conectados, o endpoint retorna explicitamente `PIPELINE_NOT_IMPLEMENTED`; não é produzido um script fictício.

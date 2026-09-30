@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package ai_bash_gen.v1;
+
+option go_package = "github.com/ahhvahh/ai-bash-generator/gen/ai_bash_gen/v1;ai_bash_gen_v1";
+
+import "ai_bash_gen/v1/pipeline.proto";
+
+enum ProcessingStage {
+  PROCESSING_STAGE_UNSPECIFIED = 0;
+  PROCESSING_STAGE_REQUEST_NORMALIZER = 1;
+  PROCESSING_STAGE_SEARCH_CAPABILITIES = 2;
+  PROCESSING_STAGE_BASH_GENERATOR = 3;
+  PROCESSING_STAGE_VALIDATION = 4;
+  PROCESSING_STAGE_BASH_OUTPUT = 5;
+}
+
+enum ProgressState {
+  PROGRESS_STATE_UNSPECIFIED = 0;
+  PROGRESS_STATE_STARTED = 1;
+  PROGRESS_STATE_COMPLETED = 2;
+  PROGRESS_STATE_FAILED = 3;
+}
+
+message GenerateRequest {
+  string text = 1;
+  string requested_filename = 2;
+}
+
+message ProgressEvent {
+  string request_id = 1;
+  ProcessingStage stage = 2;
+  ProgressState state = 3;
+  uint64 elapsed_ms = 4;
+  string message = 5;
+}
+
+message GenerateResult {
+  string request_id = 1;
+  BashArtifact artifact = 2;
+  uint64 elapsed_ms = 3;
+  string error_code = 4;
+  string error_message = 5;
+}
+
+message GenerateEvent {
+  oneof event {
+    ProgressEvent progress = 1;
+    GenerateResult result = 2;
+  }
+}

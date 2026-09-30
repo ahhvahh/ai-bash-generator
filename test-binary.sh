@@ -152,7 +152,8 @@ else
       'state_dir=/var/lib/ai-bash-gen' \
       'runtime_dir=/run/ai-bash-gen' \
       'routes_dir=/run/ai-bash-gen/routes' \
-      'llama_socket=/run/ai-bash-gen/internal/llama.sock'
+      'llama_socket=/run/ai-bash-gen/internal/llama.sock' \\
+      'generate_socket=/run/ai-bash-gen/routes/generate.sock'
     do
       if ! grep -Fxq "$expected" <<<"$RUN_STDOUT"; then
         fail "--show-paths não contém: $expected"
@@ -205,7 +206,7 @@ else
     fail "--config inexistente deveria retornar exit 1, retornou $RUN_RC"
   fi
 
-  "$BIN" --config "$TEST_CONFIG" >"$DAEMON_LOG" 2>&1 &
+  AI_BASH_GEN_RUNTIME_DIR="$TMP_DIR/run" "$BIN" --config "$TEST_CONFIG" >"$DAEMON_LOG" 2>&1 &
   DAEMON_PID=$!
   sleep 0.3
 
