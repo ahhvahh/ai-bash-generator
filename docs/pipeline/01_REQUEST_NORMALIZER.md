@@ -4,9 +4,15 @@
 
 `request-normalizer` é a primeira etapa com LLM.
 
-Ele recebe linguagem natural e produz uma `NormalizedRequest` estruturada.
+Recebe linguagem natural e produz uma `NormalizedRequest` estruturada.
 
-O agente deve decompor a solicitação em pequenas tarefas reutilizáveis e encadeáveis.
+Ele:
+
+- separa o objetivo em pequenas tarefas;
+- nomeia os resultados;
+- liga resultados anteriores por `result_ref`;
+- descreve tipos estruturados;
+- identifica entradas obrigatórias ausentes.
 
 Ele não:
 
@@ -14,29 +20,25 @@ Ele não:
 - escolhe comandos;
 - consulta MCP;
 - escolhe capabilities;
-- executa qualquer ação.
+- executa ações.
 
-## Entrada canônica
-
-Contrato Protobuf:
+## Entrada
 
 ```proto
 message UserRequest {
   string text = 1;
+  string request_id = 2;
 }
 ```
 
-Entre componentes do `ai-bash-gen`, a mensagem pode trafegar em Protobuf binário.
-
-Na fronteira com o LLM, o adaptador deve renderizar somente o conteúdo necessário em Protobuf Text Format.
-
-Exemplo:
+Visão TextProto:
 
 ```textproto
-text: "liste os itens da pasta ~/ambiente mostrando nome, tamanho e tipo; mantenha apenas executáveis e ordene por tamanho"
+text: "liste os itens de ~/ambiente com nome, tamanho e tipo; mantenha apenas executáveis e ordene por tamanho"
+request_id: "..."
 ```
 
-## Saída canônica
+## Saída
 
 ```proto
 message NormalizedRequest {
@@ -46,188 +48,125 @@ message NormalizedRequest {
   string output_description = 4;
   repeated NormalizedTask tasks = 5;
   string final_output_ref = 6;
+  NormalizationStatus status = 7;
+  repeated MissingInput missing_inputs = 8;
 }
 ```
 
-A especificação completa está em [02_NORMALIZED_REQUEST.md](02_NORMALIZED_REQUEST.md).
-
-## Regras de decomposição
-
-A solicitação deve ser dividida em tarefas pequenas quando existirem transformações logicamente independentes.
+## Decomposição
 
 Exemplo:
 
 ```text
-listar arquivos
+list_files
    |
+   | resultList
    v
-resultList
+filter_executables
    |
+   | filteredList
    v
-filtrar executáveis
+sort_by_size
    |
+   | sortedList
    v
-filteredList
-   |
-   v
-ordenar por tamanho
-   |
-   v
-sortedList
+final output
 ```
 
 Cada tarefa deve:
 
 - executar um objetivo pequeno;
-- declarar claramente sua entrada;
-- produzir exatamente um resultado nomeado;
-- usar resultados anteriores por referência;
+- possuir uma saída nomeada;
+- usar `result_ref` quando consumir resultado anterior;
 - descrever entrada e saída em inglês;
-- permanecer independente de uma implementação Bash específica.
+- permanecer independente da implementação Bash.
 
-Resultados devem usar nomes curtos em `lowerCamelCase`.
+## Tipos
 
-Exemplos:
+O normalizador utiliza `DataContract`, não strings livres.
 
-```text
-resultList
-filteredList
-sortedList
-emailList
-archiveFile
-```
-
-Referências são armazenadas sem copiar o conteúdo:
+Exemplo de saída tabular:
 
 ```textproto
-inputs {
-  name: "source"
-  type: "table"
-  result_ref: "resultList"
+output {
+  name: "resultList"
+
+  contract {
+    kind: DATA_KIND_TABLE
+    encoding: STREAM_ENCODING_JSON_LINES
+
+    fields { name: "name" kind: DATA_KIND_TEXT required: true }
+    fields { name: "size" kind: DATA_KIND_INTEGER required: true }
+    fields { name: "type" kind: DATA_KIND_TEXT required: true }
+  }
 }
 ```
 
-## Prompt de sistema
+O normalizador descreve o contrato lógico. Ele não escolhe comandos.
 
-Prompt inicial recomendado:
+## Informação ausente
+
+Se uma entrada essencial não foi fornecida, não inventar valor.
+
+Exemplo:
+
+```textproto
+status: NORMALIZATION_STATUS_MISSING_INFORMATION
+
+missing_inputs {
+  task_id: "copy_files"
+  name: "destination"
+  description: "Destination directory."
+  contract {
+    kind: DATA_KIND_PATH
+    encoding: STREAM_ENCODING_TEXT_UTF8
+  }
+}
+```
+
+O pipeline deve parar nessa condição.
+
+## Prompt canônico
+
+Este arquivo é a fonte canônica do prompt do normalizador.
 
 ```text
 You normalize user requests for ai-bash-gen.
 
-Convert the user's request into a NormalizedRequest.
+Return a NormalizedRequest.
 
 Rules:
 - Write semantic instructions and descriptions in English.
 - Preserve literal values exactly as provided by the user.
-- Split the request into small logical tasks when the work contains independent transformations.
-- Each task must have one named output.
-- Use lowerCamelCase output names.
-- When a task consumes a previous result, reference that result by name instead of copying it.
+- Split independent transformations into small logical tasks.
+- Each task has exactly one named output.
+- Use lowerCamelCase result names.
+- Reference previous outputs using result_ref; do not copy their content.
+- Use structured DataContract values.
 - Keep tasks implementation-independent.
-- Do not choose Bash commands.
-- Do not choose capabilities.
+- Do not choose shell commands or capabilities.
 - Do not call tools.
 - Do not execute anything.
 - Do not invent missing values.
-- canonical_instruction describes the complete user goal without concrete values when possible.
-- task instruction describes only that task.
-- input_description describes what the task accepts.
-- output_description describes what the task produces.
-- processing belongs in task decomposition, not shell syntax.
-- final_output_ref must reference the final task output.
-- Return only a valid NormalizedRequest in protobuf text format.
-```
-
-## Exemplo
-
-Entrada:
-
-```textproto
-text: "liste os arquivos de ~/ambiente com nome, tamanho e tipo, mantenha apenas executáveis e ordene do maior para o menor"
-```
-
-Saída esperada:
-
-```textproto
-intent: "list_executable_files"
-canonical_instruction: "List executable files with selected metadata and sorting."
-input_description: "Directory path."
-output_description: "Table containing executable files with name, size and type ordered by size descending."
-
-tasks {
-  id: "list_files"
-  instruction: "List directory items with name, size and type."
-  input_description: "Directory path."
-  output_description: "Table containing name, size and type for each item."
-  inputs {
-    name: "path"
-    type: "path"
-    literal: "~/ambiente"
-  }
-  output {
-    name: "resultList"
-    type: "table"
-    fields: "name"
-    fields: "size"
-    fields: "type"
-  }
-}
-
-tasks {
-  id: "filter_executables"
-  instruction: "Keep executable files only."
-  input_description: "Table containing file metadata."
-  output_description: "Table containing executable files only."
-  inputs {
-    name: "source"
-    type: "table"
-    result_ref: "resultList"
-  }
-  output {
-    name: "filteredList"
-    type: "table"
-    fields: "name"
-    fields: "size"
-    fields: "type"
-  }
-  depends_on: "list_files"
-}
-
-tasks {
-  id: "sort_by_size"
-  instruction: "Sort rows by size descending."
-  input_description: "Table containing executable file metadata."
-  output_description: "Table ordered by size descending."
-  inputs {
-    name: "source"
-    type: "table"
-    result_ref: "filteredList"
-  }
-  output {
-    name: "sortedList"
-    type: "table"
-    fields: "name"
-    fields: "size"
-    fields: "type"
-  }
-  depends_on: "filter_executables"
-}
-
-final_output_ref: "sortedList"
+- If required information is missing, set MISSING_INFORMATION and describe it in missing_inputs.
+- canonical_instruction describes the complete goal without concrete values when possible.
+- final_output_ref references the requested final result.
+- Return only valid NormalizedRequest protobuf text.
 ```
 
 ## Validação após o LLM
 
-Antes de seguir para a próxima etapa, o `ai-bash-gen` deve validar:
+A aplicação deve validar:
 
-1. o TextProto pode ser convertido para `NormalizedRequest`;
-2. todos os IDs de tarefa são únicos;
-3. todos os nomes de resultado são únicos;
-4. cada `result_ref` referencia uma saída anterior;
-5. `depends_on` referencia tarefas existentes;
-6. não existem ciclos;
-7. `final_output_ref` existe;
-8. nenhum comando shell aparece como implementação da tarefa;
-9. valores concretos não foram inventados.
+1. TextProto válido;
+2. status consistente;
+3. IDs únicos;
+4. nomes de resultado únicos;
+5. `result_ref` válido;
+6. contratos estruturados válidos;
+7. DAG sem ciclos;
+8. `final_output_ref` válido;
+9. ausência de valores inventados;
+10. ausência de implementação shell.
 
-Se a estrutura for inválida, a aplicação deve rejeitar ou solicitar uma única correção estruturada ao modelo.
+Somente `NORMALIZATION_STATUS_READY` segue para `search_capabilities`.
