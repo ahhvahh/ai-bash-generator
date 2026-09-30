@@ -13,7 +13,8 @@ O projeto foi desenhado para:
 - utilizar `llama.cpp` como motor de inferência;
 - manter o `llama-server` isolado de TCP/IP e acessível somente pela aplicação;
 - expor somente Unix Domain Sockets controlados por `ai-bash-gen`;
-- utilizar Protocol Buffers como protocolo entre clientes e o daemon;
+- utilizar Protocol Buffers como contrato e transporte estruturado entre componentes;
+- utilizar Protobuf Text Format como representação estruturada e compacta na fronteira com os LLMs;
 - permitir criação de agentes por configuração;
 - permitir que agentes consultem servidores MCP autorizados;
 - manter catálogo e telemetria de funções reutilizáveis;
@@ -71,6 +72,16 @@ A documentação detalhada está em [docs/AGENTS.md](docs/AGENTS.md).
 O pipeline geral está em [docs/REQUEST_FLOW.md](docs/REQUEST_FLOW.md).
 
 O contrato e as regras da `NormalizedRequest` estão em [docs/NORMALIZED_REQUEST.md](docs/NORMALIZED_REQUEST.md).
+
+Documentação das etapas:
+
+- [request-normalizer](docs/REQUEST_NORMALIZER.md)
+- [NormalizedRequest](docs/NORMALIZED_REQUEST.md)
+- [search_capabilities](docs/SEARCH_CAPABILITIES.md)
+- [bash-generator](docs/BASH_GENERATOR.md)
+- [Protobuf no pipeline](docs/PROTOBUF_PIPELINE.md)
+
+Schema Protobuf: [proto/ai_bash_gen/v1/pipeline.proto](proto/ai_bash_gen/v1/pipeline.proto).
 
 ### MCP
 
