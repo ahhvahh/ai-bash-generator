@@ -53,7 +53,9 @@ Características:
   - cria usuário/grupo de serviço dedicados somente se solicitado;
   - só cria serviço systemd se o binário suportar --config;
   - verifica dependências Debian e oferece instalar pacotes ausentes;
-  - pode autorizar um usuário cliente no grupo do serviço;
+  - cadastra e confirma o usuário cliente no grupo do serviço;
+  - detecta quando a sessão atual ainda não recebeu o novo grupo;
+  - valida o acesso do usuário cliente às rotas usando uma sessão nova;
   - valida caminhos absolutos antes de alterar o sistema;
   - pode iniciar/reiniciar o serviço ao final da instalação;
   - após subir o serviço, aguarda e valida os sockets públicos de routes/;
@@ -212,6 +214,57 @@ detect_client_user() {
   printf '%s\n' "$candidate"
 }
 
+user_has_registered_group() {
+  local user="$1" group="$2"
+  id -nG "$user" 2>/dev/null | tr ' ' '\n' | grep -Fxq "$group"
+}
+
+session_user_has_group() {
+  local user="$1" group="$2"
+  local target_uid group_gid pid proc_uid proc_ppid groups_line
+
+  target_uid="$(id -u "$user" 2>/dev/null)" || return 2
+  group_gid="$(getent group "$group" 2>/dev/null | awk -F: '{print $3; exit}')"
+  [[ -n "$group_gid" ]] || return 2
+
+  pid="$"
+  while [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 && -r "/proc/$pid/status" ]]; do
+    proc_uid="$(awk '/^Uid:/ {print $2; exit}' "/proc/$pid/status" 2>/dev/null || true)"
+    if [[ "$proc_uid" == "$target_uid" ]]; then
+      groups_line="$(awk '/^Groups:/ {$1=""; sub(/^ /, ""); print; exit}' "/proc/$pid/status" 2>/dev/null || true)"
+      tr ' ' '\n' <<<"$groups_line" | grep -Fxq "$group_gid"
+      return $?
+    fi
+    proc_ppid="$(awk '/^PPid:/ {print $2; exit}' "/proc/$pid/status" 2>/dev/null || true)"
+    [[ "$proc_ppid" =~ ^[0-9]+$ ]] || return 2
+    pid="$proc_ppid"
+  done
+
+  return 2
+}
+
+check_client_session_group() {
+  local user="$1" group="$2" rc
+
+  CLIENT_SESSION_REFRESH_REQUIRED="no"
+  if session_user_has_group "$user" "$group"; then
+    ok "sessão atual de $user já possui o grupo $group."
+    return 0
+  fi
+
+  rc=$?
+  if [[ "$rc" -eq 1 ]]; then
+    CLIENT_SESSION_REFRESH_REQUIRED="yes"
+    warn "o cadastro de $user no grupo $group está correto, mas a sessão atual ainda não recebeu esse grupo."
+    warn "para usar o cliente agora, execute em um novo shell: newgrp $group"
+    warn "para corrigir permanentemente a sessão gráfica/SSH, faça logout e login novamente."
+    return 0
+  fi
+
+  CLIENT_SESSION_REFRESH_REQUIRED="unknown"
+  warn "não foi possível identificar uma sessão ativa de $user para confirmar os grupos já carregados."
+  warn "se o acesso ao socket falhar, faça logout/login ou execute: newgrp $group"
+}
 authorize_client_user() {
   local user="$1" group="$2" usermod_cmd
 
@@ -223,14 +276,19 @@ authorize_client_user() {
     die "usermod não encontrado. No Debian, ele é fornecido pelo pacote 'passwd'."
   }
 
-  if id -nG "$user" | tr ' ' '\n' | grep -Fxq "$group"; then
-    info "usuário $user já pertence ao grupo $group"
-    return 0
+  if user_has_registered_group "$user" "$group"; then
+    info "usuário $user já está cadastrado no grupo $group"
+  else
+    "${SUDO[@]}" "$usermod_cmd" -aG "$group" "$user"
+    ok "usuário $user adicionado ao grupo $group"
   fi
 
-  "${SUDO[@]}" "$usermod_cmd" -aG "$group" "$user"
-  ok "usuário $user adicionado ao grupo $group"
-  warn "o usuário $user precisa iniciar uma nova sessão para receber o novo grupo."
+  if ! user_has_registered_group "$user" "$group"; then
+    die "o cadastro de $user no grupo $group não foi efetivado."
+  fi
+  ok "cadastro confirmado: $user pertence ao grupo $group."
+
+  check_client_session_group "$user" "$group"
 }
 load_existing_unit_defaults() {
   local existing_user existing_group
@@ -589,6 +647,36 @@ validate_published_routes() {
   done
 }
 
+validate_client_route_access() {
+  local user="$1" group="$2" bin="$3" runtime_dir="$4"
+  local runuser_cmd entry key socket
+  local -a routes=()
+
+  [[ -n "$user" ]] || return 0
+  user_has_registered_group "$user" "$group" || die "usuário $user não está cadastrado no grupo $group."
+
+  runuser_cmd="$(resolve_system_command runuser)" || {
+    die "runuser não encontrado. No Debian, ele é fornecido pelo pacote util-linux."
+  }
+
+  mapfile -t routes < <(discover_route_sockets "$bin" "$runtime_dir")
+  [[ ${#routes[@]} -gt 0 ]] || die "nenhuma rota pública foi encontrada para validar o usuário cliente."
+
+  "${SUDO[@]}" "$runuser_cmd" -u "$user" -- test -x "$runtime_dir" || {
+    die "usuário $user não consegue atravessar o runtime $runtime_dir."
+  }
+  "${SUDO[@]}" "$runuser_cmd" -u "$user" -- test -x "$runtime_dir/routes" || {
+    die "usuário $user não consegue atravessar $runtime_dir/routes."
+  }
+
+  for entry in "${routes[@]}"; do
+    IFS='|' read -r key socket <<<"$entry"
+    "${SUDO[@]}" "$runuser_cmd" -u "$user" -- test -w "$socket" || {
+      die "usuário $user não possui permissão para consumir a rota $key: $socket"
+    }
+    ok "acesso do cliente validado: $user -> $key ($socket)"
+  done
+}
 start_or_restart_service() {
   local bin="$1" runtime_dir="$2" expected_group="$3"
 
@@ -777,6 +865,9 @@ main() {
 
     if [[ "$START_SERVICE" == "yes" ]]; then
       start_or_restart_service "$BIN_TARGET" "$RUNTIME_DIR" "$SERVICE_GROUP"
+      if [[ -n "$CLIENT_USER" ]]; then
+        validate_client_route_access "$CLIENT_USER" "$SERVICE_GROUP" "$BIN_TARGET" "$RUNTIME_DIR"
+      fi
     else
       if "${SUDO[@]}" systemctl is-active --quiet "$APP_NAME"; then
         warn "o serviço já estava ativo, mas não foi reiniciado; o processo em memória pode continuar usando o binário anterior."
@@ -794,6 +885,10 @@ main() {
   info "socket esperado: $RUNTIME_DIR/routes/generate.sock"
   if [[ "${START_SERVICE:-no}" == "yes" ]]; then
     info "serviço e rotas foram validados após a inicialização."
+  fi
+  if [[ "${CLIENT_SESSION_REFRESH_REQUIRED:-no}" == "yes" ]]; then
+    warn "AÇÃO NECESSÁRIA: a sessão atual de $CLIENT_USER ainda não possui o grupo $SERVICE_GROUP."
+    warn "execute: newgrp $SERVICE_GROUP  (ou faça logout/login antes de usar o cliente)."
   fi
 
   if [[ "$INSTALL_SYSTEMD" == "no" ]]; then
