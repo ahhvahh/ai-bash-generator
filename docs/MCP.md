@@ -275,7 +275,8 @@ CREATE TABLE capability_version (
 
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-    UNIQUE (capability_id, version)
+    UNIQUE (capability_id, version),
+    UNIQUE (capability_id, id)
 );
 ```
 
@@ -284,8 +285,12 @@ Depois da criação das duas tabelas:
 ```sql
 ALTER TABLE capability
 ADD CONSTRAINT fk_capability_active_version
-FOREIGN KEY (active_version_id)
-REFERENCES capability_version(id);
+FOREIGN KEY (id, active_version_id)
+REFERENCES capability_version(capability_id, id);
+
+CREATE UNIQUE INDEX ux_capability_one_active_version
+ON capability_version (capability_id)
+WHERE status = 3;
 ```
 
 ### Status
@@ -328,6 +333,8 @@ LIMIT $1;
 ```
 
 Dessa forma versões `candidate`, `validated` ou `approved` nunca entram na busca normal.
+
+A ativação deve ocorrer em uma transação que bloqueie a linha de `capability`, desative a versão ativa anterior, marque a nova versão como `active` e atualize `active_version_id`. O FK composto impede que uma capability aponte por engano para uma versão pertencente a outra capability.
 
 ### Pesquisa textual
 
