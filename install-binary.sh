@@ -227,7 +227,7 @@ session_user_has_group() {
   group_gid="$(getent group "$group" 2>/dev/null | awk -F: '{print $3; exit}')"
   [[ -n "$group_gid" ]] || return 2
 
-  pid="$(awk '/^Tgid:/ {print $2; exit}' /proc/self/status 2>/dev/null || true)"
+  pid="${BASHPID:-}"
   [[ "$pid" =~ ^[0-9]+$ ]] || return 2
 
   while [[ "$pid" -gt 1 && -r "/proc/$pid/status" ]]; do
