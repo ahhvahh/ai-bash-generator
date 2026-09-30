@@ -221,7 +221,19 @@ user_has_registered_group() {
 
 session_user_has_group() {
   local user="$1" group="$2"
-  local target_uid group_gid pid proc_uid proc_gid proc_ppid groups_line
+  local current_user target_uid group_gid pid proc_uid proc_gid proc_ppid groups_line
+
+  current_user="$(id -un 2>/dev/null || true)"
+  if [[ "$current_user" == "$user" ]]; then
+    id -nG 2>/dev/null | tr ' ' '\n' | grep -Fxq "$group"
+    return $?
+  fi
+
+  # Se o instalador inteiro foi iniciado via sudo, procure a sessão
+  # original do SUDO_USER na árvore de processos.
+  if [[ "$EUID" -ne 0 || "${SUDO_USER:-}" != "$user" ]]; then
+    return 2
+  fi
 
   target_uid="$(id -u "$user" 2>/dev/null)" || return 2
   group_gid="$(getent group "$group" 2>/dev/null | awk -F: '{print $3; exit}')"
