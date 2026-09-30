@@ -332,6 +332,8 @@ Ao instalar a unit systemd, o instalador pergunta se deve iniciar/reiniciar o se
 
 Os caminhos informados ao instalador para executável, configuração, estado, runtime e unit systemd devem ser absolutos. Valores relativos como `s`, `./ai-bash-gen` ou `bin/ai-bash-gen` são recusados e o instalador solicita novamente o campo. Quando um runtime diferente do padrão é escolhido, ele é propagado para a unit através de `AI_BASH_GEN_RUNTIME_DIR` e também é usado na validação das rotas.
 
+O cadastro do usuário cliente também é validado em duas camadas. Primeiro, o instalador confirma via `id` que o usuário realmente pertence ao grupo do serviço após `usermod -aG`. Depois que as rotas estão disponíveis, ele usa `runuser` para iniciar uma sessão nova desse usuário e verifica acesso de travessia ao runtime e permissão de escrita nos sockets públicos. Se o cadastro estiver correto, mas a sessão que executou o instalador ainda não tiver carregado o novo grupo, o instalador não altera a sessão pai (isso não é possível de forma segura); ele exibe um aviso explícito solicitando `newgrp <grupo>` ou logout/login antes de usar o cliente.
+
 ### Teste do binário e do socket
 
 ```bash
