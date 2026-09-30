@@ -1,5 +1,7 @@
 # Agentes
 
+O fluxo completo de execução está documentado em [pipeline/README.md](pipeline/README.md).
+
 Este documento define como agentes são criados, configurados, validados e executados pelo `ai-bash-gen`.
 
 ## Objetivo
@@ -192,12 +194,12 @@ runtime:
   max_tool_calls: 8
 
 input:
-  type: json_schema
-  schema: normalized-request
+  type: protobuf_text
+  message: ai_bash_gen.v1.NormalizedRequest
 
 output:
-  type: json_schema
-  schema: script-artifact
+  type: protobuf_text
+  message: ai_bash_gen.v1.GenerationResult
 
 tools:
   mcp:
@@ -542,11 +544,12 @@ runtime:
   max_tool_calls: 0
 
 input:
-  type: text
+  type: protobuf_text
+  message: ai_bash_gen.v1.UserRequest
 
 output:
-  type: json_schema
-  schema: normalized-request
+  type: protobuf_text
+  message: ai_bash_gen.v1.NormalizedRequest
 
 tools:
   mcp:
