@@ -147,3 +147,30 @@ message GenerationResult {
   string final_output_ref = 5;
   repeated string warnings = 6;
 }
+
+message ValidationRequest {
+  GenerationResult generation = 1;
+}
+
+message ValidationIssue {
+  string code = 1;
+  string message = 2;
+}
+
+message ValidationResult {
+  bool valid = 1;
+  GenerationResult generation = 2;
+  repeated ValidationIssue issues = 3;
+}
+
+message BashOutputRequest {
+  ValidationResult validation = 1;
+  string requested_filename = 2;
+}
+
+message BashArtifact {
+  string filename = 1;
+  string content = 2;
+  string sha256 = 3;
+  string final_output_ref = 4;
+}
