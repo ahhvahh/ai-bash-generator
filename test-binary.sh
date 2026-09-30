@@ -20,6 +20,47 @@ fail() { FAIL=$((FAIL + 1)); printf '%s[FAIL]%s %s\n' "$C_FAIL" "$C_RESET" "$*";
 skip() { SKIP=$((SKIP + 1)); printf '%s[SKIP]%s %s\n' "$C_SKIP" "$C_RESET" "$*"; }
 info() { printf '%s[INFO]%s %s\n' "$C_INFO" "$C_RESET" "$*"; }
 
+resolve_component() {
+  local name="$1" candidate
+  if command -v "$name" >/dev/null 2>&1; then
+    command -v "$name"
+    return 0
+  fi
+  for candidate in "/usr/sbin/$name" "/usr/bin/$name" "/sbin/$name" "/bin/$name"; do
+    [[ -x "$candidate" ]] && { printf '%s\n' "$candidate"; return 0; }
+  done
+  return 1
+}
+
+check_required_components() {
+  local name path
+  local -a required=(bash grep awk sha256sum install getent groupadd useradd usermod nologin systemctl)
+  echo
+  echo "---------------- Dependências/componentes ----------------"
+  for name in "${required[@]}"; do
+    if path="$(resolve_component "$name")"; then
+      pass "componente disponível: $name ($path)"
+    else
+      fail "componente obrigatório ausente: $name"
+    fi
+  done
+
+  if command -v dpkg-query >/dev/null 2>&1; then
+    local package status
+    local -a packages=(bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils)
+    for package in "${packages[@]}"; do
+      status="$(dpkg-query -W -f='${Status}' "$package" 2>/dev/null || true)"
+      if [[ "$status" == "install ok installed" ]]; then
+        pass "pacote Debian instalado: $package"
+      else
+        fail "pacote Debian obrigatório ausente: $package"
+      fi
+    done
+  else
+    skip "dpkg-query indisponível; verificação de pacotes Debian ignorada"
+  fi
+}
+
 usage() {
   cat <<'USAGE'
 Uso:
@@ -47,6 +88,8 @@ echo " Teste do binário ai-bash-gen"
 echo "============================================================"
 info "binário: $BIN"
 info "host: $(uname -s 2>/dev/null || echo '?') / $(uname -m 2>/dev/null || echo '?')"
+
+check_required_components
 
 [[ -f "$BIN" ]] && pass "arquivo regular existe" || fail "o caminho não é um arquivo regular"
 [[ -s "$BIN" ]] && pass "arquivo não está vazio" || fail "arquivo está vazio"
@@ -192,6 +235,8 @@ else
   TMP_BIN="$TMP_DIR/ai-bash-gen"
   TEST_CONFIG="$TMP_DIR/config.yaml"
   DAEMON_LOG="$TMP_DIR/daemon.log"
+  TEST_RUNTIME="$TMP_DIR/run"
+  GENERATE_SOCKET="$TEST_RUNTIME/routes/generate.sock"
   printf '%s\n' '# configuração de teste' >"$TEST_CONFIG"
 
   if cp -- "$BIN" "$TMP_BIN" && chmod +x "$TMP_BIN" && (cd "$TMP_DIR" && "$TMP_BIN" --version >/dev/null 2>&1 && "$TMP_BIN" --show-paths >/dev/null 2>&1); then
@@ -212,6 +257,20 @@ else
 
   if kill -0 "$DAEMON_PID" 2>/dev/null; then
     pass "modo daemon permanece em execução após inicialização"
+
+    if [[ -S "$GENERATE_SOCKET" ]]; then
+      pass "daemon criou generate.sock"
+      if command -v stat >/dev/null 2>&1; then
+        SOCKET_MODE="$(stat -c '%a' "$GENERATE_SOCKET" 2>/dev/null || true)"
+        [[ "$SOCKET_MODE" == "660" ]] && pass "generate.sock possui modo 0660" || fail "generate.sock deveria ter modo 0660, encontrado $SOCKET_MODE"
+        ROUTES_MODE="$(stat -c '%a' "$TEST_RUNTIME/routes" 2>/dev/null || true)"
+        [[ "$ROUTES_MODE" == "750" ]] && pass "diretório routes possui modo 0750" || fail "diretório routes deveria ter modo 0750, encontrado $ROUTES_MODE"
+      else
+        skip "stat indisponível; permissões do socket não verificadas"
+      fi
+    else
+      fail "daemon não criou o socket esperado: $GENERATE_SOCKET"
+    fi
     kill -TERM "$DAEMON_PID" 2>/dev/null || true
 
     stopped=0
@@ -238,6 +297,7 @@ else
     fi
 
     grep -q 'ai-bash-gen iniciado' "$DAEMON_LOG" && pass "daemon registra log de inicialização" || fail "log de inicialização não encontrado"
+    grep -q "generate_socket=$GENERATE_SOCKET" "$DAEMON_LOG" && pass "daemon registra generate_socket" || fail "log não registra generate_socket esperado"
     grep -q 'sinal de encerramento recebido' "$DAEMON_LOG" && pass "daemon registra SIGTERM" || fail "log de SIGTERM não encontrado"
     grep -q 'ai-bash-gen encerrado' "$DAEMON_LOG" && pass "daemon registra encerramento" || fail "log de encerramento não encontrado"
   else
