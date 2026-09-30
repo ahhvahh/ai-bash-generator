@@ -486,7 +486,7 @@ discover_route_sockets() {
   "$bin" --show-paths 2>/dev/null | while IFS='=' read -r key value; do
     [[ "$key" == *_socket ]] || continue
     [[ "$value" == "$runtime_dir/routes/"* ]] || continue
-    printf '%s\t%s\n' "$key" "$value"
+    printf '%s|%s\n' "$key" "$value"
   done
 }
 
@@ -500,7 +500,7 @@ validate_published_routes() {
   local bin="$1" runtime_dir="$2" expected_group="$3"
   local timeout_seconds="${4:-10}"
   local routes_dir="$runtime_dir/routes"
-  local attempts entry key socket mode group missing
+  local attempts entry key socket mode group missing i
   local -a routes=()
 
   mapfile -t routes < <(discover_route_sockets "$bin" "$runtime_dir")
@@ -513,7 +513,75 @@ validate_published_routes() {
     if "${SUDO[@]}" systemctl is-active --quiet "$APP_NAME"; then
       missing=0
       for entry in "${routes[@]}"; do
-        socket="${entry#*  cat <<__SUMMARY__
+        IFS='|' read -r key socket <<<"$entry"
+        if ! "${SUDO[@]}" test -S "$socket"; then
+          missing=1
+          break
+        fi
+      done
+      [[ "$missing" -eq 0 ]] && break
+    fi
+    sleep 0.25
+  done
+
+  if ! "${SUDO[@]}" systemctl is-active --quiet "$APP_NAME"; then
+    print_service_diagnostics
+    die "o serviço $APP_NAME não permaneceu ativo após a inicialização."
+  fi
+
+  if ! "${SUDO[@]}" test -d "$routes_dir"; then
+    print_service_diagnostics
+    die "diretório de rotas não foi criado: $routes_dir"
+  fi
+
+  if command -v stat >/dev/null 2>&1; then
+    mode="$("${SUDO[@]}" stat -c '%a' "$routes_dir" 2>/dev/null || true)"
+    group="$("${SUDO[@]}" stat -c '%G' "$routes_dir" 2>/dev/null || true)"
+    [[ "$mode" == "750" ]] || die "permissão inesperada em $routes_dir: esperado 0750, encontrado ${mode:-?}"
+    [[ "$group" == "$expected_group" ]] || die "grupo inesperado em $routes_dir: esperado $expected_group, encontrado ${group:-?}"
+  fi
+
+  for entry in "${routes[@]}"; do
+    IFS='|' read -r key socket <<<"$entry"
+
+    if ! "${SUDO[@]}" test -S "$socket"; then
+      print_service_diagnostics
+      die "rota $key não ficou disponível após ${timeout_seconds}s: $socket"
+    fi
+
+    if command -v stat >/dev/null 2>&1; then
+      mode="$("${SUDO[@]}" stat -c '%a' "$socket" 2>/dev/null || true)"
+      group="$("${SUDO[@]}" stat -c '%G' "$socket" 2>/dev/null || true)"
+      [[ "$mode" == "660" ]] || die "permissão inesperada na rota $key: esperado 0660, encontrado ${mode:-?}"
+      [[ "$group" == "$expected_group" ]] || die "grupo inesperado na rota $key: esperado $expected_group, encontrado ${group:-?}"
+    fi
+
+    ok "rota disponível: $key -> $socket"
+  done
+}
+
+start_or_restart_service() {
+  local bin="$1" runtime_dir="$2" expected_group="$3"
+
+  if "${SUDO[@]}" systemctl is-active --quiet "$APP_NAME"; then
+    info "serviço já está ativo; reiniciando para carregar o binário instalado..."
+    if ! "${SUDO[@]}" systemctl restart "$APP_NAME"; then
+      print_service_diagnostics
+      die "falha ao reiniciar $APP_NAME."
+    fi
+  else
+    info "iniciando serviço $APP_NAME..."
+    if ! "${SUDO[@]}" systemctl start "$APP_NAME"; then
+      print_service_diagnostics
+      die "falha ao iniciar $APP_NAME."
+    fi
+  fi
+
+  validate_published_routes "$bin" "$runtime_dir" "$expected_group" 10
+  ok "serviço ativo e rotas públicas disponíveis."
+}
+print_summary() {
+  cat <<__SUMMARY__
 
 ============================================================
 Resumo da instalação
@@ -694,540 +762,6 @@ main() {
   if [[ "${START_SERVICE:-no}" == "yes" ]]; then
     info "serviço e rotas foram validados após a inicialização."
   fi
-
-  if [[ "$INSTALL_SYSTEMD" == "no" ]]; then
-    info "nenhum serviço systemd foi instalado."
-  fi
-}
-
-main "$@"\t'}"
-        [[ -S "$socket" ]] || { missing=1; break; }
-      done
-      [[ "$missing" -eq 0 ]] && break
-    fi
-    sleep 0.25
-  done
-
-  if ! "${SUDO[@]}" systemctl is-active --quiet "$APP_NAME"; then
-    print_service_diagnostics
-    die "o serviço $APP_NAME não permaneceu ativo após a inicialização."
-  fi
-
-  if [[ ! -d "$routes_dir" ]]; then
-    print_service_diagnostics
-    die "diretório de rotas não foi criado: $routes_dir"
-  fi
-
-  if command -v stat >/dev/null 2>&1; then
-    mode="$(stat -c '%a' "$routes_dir" 2>/dev/null || true)"
-    group="$(stat -c '%G' "$routes_dir" 2>/dev/null || true)"
-    [[ "$mode" == "750" ]] || die "permissão inesperada em $routes_dir: esperado 0750, encontrado ${mode:-?}"
-    [[ "$group" == "$expected_group" ]] || die "grupo inesperado em $routes_dir: esperado $expected_group, encontrado ${group:-?}"
-  fi
-
-  for entry in "${routes[@]}"; do
-    key="${entry%%  cat <<__SUMMARY__
-
-============================================================
-Resumo da instalação
-============================================================
-Binário de origem : $BIN_SOURCE
-Binário instalado : $BIN_TARGET
-Configuração       : $CONFIG_DIR
-Estado persistente : $STATE_DIR
-Runtime            : $RUNTIME_DIR
-Usuário de serviço : $SERVICE_USER
-Grupo de serviço   : $SERVICE_GROUP
-Usuário cliente    : ${CLIENT_USER:-nenhum}
-Criar conta serviço: $CREATE_SERVICE_ACCOUNT
-Instalar systemd   : $INSTALL_SYSTEMD
-Config bootstrap    : ${CREATE_BOOTSTRAP_CONFIG:-no}
-Unit systemd       : $UNIT_PATH
-============================================================
-__SUMMARY__
-}
-
-main() {
-  case "${1:-}" in
-    -h|--help|help)
-      usage
-      exit 0
-      ;;
-  esac
-
-  require_interactive
-
-  [[ $# -le 1 ]] || { usage >&2; exit 2; }
-
-  check_debian_family
-  setup_privilege_command
-  ensure_debian_packages
-  load_existing_unit_defaults
-
-  DEFAULT_BIN_SOURCE="${1:-$(detect_binary_default)}"
-
-  echo
-  printf '%sConfiguração interativa%s\n' "$C_BOLD" "$C_RESET"
-  echo "Cada parâmetro será confirmado individualmente."
-
-  BIN_SOURCE="$(ask_value 'Caminho do binário compilado' "$DEFAULT_BIN_SOURCE")"
-  [[ -e "$BIN_SOURCE" ]] || die "arquivo não encontrado: $BIN_SOURCE"
-  BIN_SOURCE="$(absolute_path "$BIN_SOURCE")"
-  confirm_value "Binário de origem" "$BIN_SOURCE"
-
-  BIN_TARGET="$(ask_value 'Destino do executável' "$DEFAULT_BIN_TARGET")"
-  confirm_value "Destino do executável" "$BIN_TARGET"
-
-  CONFIG_DIR="$(ask_value 'Diretório de configuração' "$DEFAULT_CONFIG_DIR")"
-  confirm_value "Diretório de configuração" "$CONFIG_DIR"
-
-  STATE_DIR="$(ask_value 'Diretório de estado persistente' "$DEFAULT_STATE_DIR")"
-  confirm_value "Diretório de estado" "$STATE_DIR"
-
-  RUNTIME_DIR="$(ask_value 'Diretório de runtime' "$DEFAULT_RUNTIME_DIR")"
-  confirm_value "Diretório de runtime" "$RUNTIME_DIR"
-
-  SERVICE_USER="$(ask_value 'Usuário de serviço' "$DEFAULT_SERVICE_USER")"
-  confirm_value "Usuário de serviço" "$SERVICE_USER"
-
-  SERVICE_GROUP="$(ask_value 'Grupo de serviço' "$DEFAULT_SERVICE_GROUP")"
-  confirm_value "Grupo de serviço" "$SERVICE_GROUP"
-
-  if ask_yes_no "Criar/usar usuário e grupo de serviço dedicados?" "Y"; then
-    CREATE_SERVICE_ACCOUNT="yes"
-  else
-    CREATE_SERVICE_ACCOUNT="no"
-  fi
-  confirm_value "Criar conta de serviço" "$CREATE_SERVICE_ACCOUNT"
-
-  DEFAULT_CLIENT_USER="$(detect_client_user)"
-  CLIENT_USER="$(ask_value 'Usuário cliente autorizado a consumir os sockets (vazio = nenhum)' "$DEFAULT_CLIENT_USER")"
-  if [[ -n "$CLIENT_USER" ]]; then
-    confirm_value "Usuário cliente" "$CLIENT_USER"
-  else
-    info "nenhum usuário cliente será adicionado ao grupo do serviço."
-  fi
-
-  UNIT_PATH="$(ask_value 'Caminho da unit systemd' "$DEFAULT_UNIT_PATH")"
-  confirm_value "Unit systemd" "$UNIT_PATH"
-
-  validate_binary "$BIN_SOURCE"
-
-  if supports_daemon_mode "$BIN_SOURCE"; then
-    if ask_yes_no "O binário suporta --config. Instalar serviço systemd?" "Y"; then
-      INSTALL_SYSTEMD="yes"
-    else
-      INSTALL_SYSTEMD="no"
-    fi
-  else
-    warn "o binário atual NÃO expõe --config; ele ainda é o bootstrap do projeto."
-    warn "um serviço systemd criado agora encerraria imediatamente em vez de atuar como daemon."
-    INSTALL_SYSTEMD="no"
-    info "systemd será ignorado nesta instalação."
-  fi
-  confirm_value "Instalar serviço systemd" "$INSTALL_SYSTEMD"
-
-  if [[ "$INSTALL_SYSTEMD" == "yes" && "$CREATE_SERVICE_ACCOUNT" != "yes" ]]; then
-    die "a instalação systemd requer usuário/grupo de serviço dedicados."
-  fi
-
-  CREATE_BOOTSTRAP_CONFIG="no"
-  if [[ "$INSTALL_SYSTEMD" == "yes" ]]; then
-    if [[ -e "$CONFIG_DIR/config.yaml" ]]; then
-      CREATE_BOOTSTRAP_CONFIG="existing"
-      info "configuração existente será utilizada: $CONFIG_DIR/config.yaml"
-    elif ask_yes_no "config.yaml não existe. Criar configuração bootstrap?" "Y"; then
-      CREATE_BOOTSTRAP_CONFIG="yes"
-    else
-      die "o serviço requer $CONFIG_DIR/config.yaml."
-    fi
-    confirm_value "Configuração bootstrap" "$CREATE_BOOTSTRAP_CONFIG"
-  fi
-
-  print_summary
-  ask_yes_no "Executar a instalação com estes parâmetros?" "N" || die "instalação cancelada."
-
-  if [[ "$CREATE_SERVICE_ACCOUNT" == "yes" ]]; then
-    create_service_account "$SERVICE_USER" "$SERVICE_GROUP" "$STATE_DIR"
-  fi
-
-  if [[ -n "$CLIENT_USER" ]]; then
-    authorize_client_user "$CLIENT_USER" "$SERVICE_GROUP"
-  fi
-
-  install_binary "$BIN_SOURCE" "$BIN_TARGET"
-  prepare_directories "$CONFIG_DIR" "$STATE_DIR" "$RUNTIME_DIR" "$SERVICE_USER" "$SERVICE_GROUP" "$CREATE_SERVICE_ACCOUNT"
-
-  if [[ "$INSTALL_SYSTEMD" == "yes" ]]; then
-    [[ "$CREATE_SERVICE_ACCOUNT" == "yes" ]] || die "systemd requer usuário/grupo de serviço dedicados neste instalador."
-    if [[ "$CREATE_BOOTSTRAP_CONFIG" == "yes" ]]; then
-      create_bootstrap_config "$CONFIG_DIR" "$SERVICE_GROUP"
-    fi
-
-    create_systemd_unit "$UNIT_PATH" "$BIN_TARGET" "$CONFIG_DIR" "$SERVICE_USER" "$SERVICE_GROUP"
-
-    warn "o serviço não será habilitado nem iniciado automaticamente."
-    info "revise primeiro: $CONFIG_DIR/config.yaml"
-    info "depois execute, se apropriado: sudo systemctl enable --now $APP_NAME"
-  fi
-
-  echo
-  ok "instalação concluída."
-  info "teste: $BIN_TARGET --version"
-  info "caminhos: $BIN_TARGET --show-paths"
-  info "socket esperado: $RUNTIME_DIR/routes/generate.sock"
-
-  if [[ "$INSTALL_SYSTEMD" == "no" ]]; then
-    info "nenhum serviço systemd foi instalado."
-  fi
-}
-
-main "$@"\t'*}"
-    socket="${entry#*  cat <<__SUMMARY__
-
-============================================================
-Resumo da instalação
-============================================================
-Binário de origem : $BIN_SOURCE
-Binário instalado : $BIN_TARGET
-Configuração       : $CONFIG_DIR
-Estado persistente : $STATE_DIR
-Runtime            : $RUNTIME_DIR
-Usuário de serviço : $SERVICE_USER
-Grupo de serviço   : $SERVICE_GROUP
-Usuário cliente    : ${CLIENT_USER:-nenhum}
-Criar conta serviço: $CREATE_SERVICE_ACCOUNT
-Instalar systemd   : $INSTALL_SYSTEMD
-Config bootstrap    : ${CREATE_BOOTSTRAP_CONFIG:-no}
-Unit systemd       : $UNIT_PATH
-============================================================
-__SUMMARY__
-}
-
-main() {
-  case "${1:-}" in
-    -h|--help|help)
-      usage
-      exit 0
-      ;;
-  esac
-
-  require_interactive
-
-  [[ $# -le 1 ]] || { usage >&2; exit 2; }
-
-  check_debian_family
-  setup_privilege_command
-  ensure_debian_packages
-  load_existing_unit_defaults
-
-  DEFAULT_BIN_SOURCE="${1:-$(detect_binary_default)}"
-
-  echo
-  printf '%sConfiguração interativa%s\n' "$C_BOLD" "$C_RESET"
-  echo "Cada parâmetro será confirmado individualmente."
-
-  BIN_SOURCE="$(ask_value 'Caminho do binário compilado' "$DEFAULT_BIN_SOURCE")"
-  [[ -e "$BIN_SOURCE" ]] || die "arquivo não encontrado: $BIN_SOURCE"
-  BIN_SOURCE="$(absolute_path "$BIN_SOURCE")"
-  confirm_value "Binário de origem" "$BIN_SOURCE"
-
-  BIN_TARGET="$(ask_value 'Destino do executável' "$DEFAULT_BIN_TARGET")"
-  confirm_value "Destino do executável" "$BIN_TARGET"
-
-  CONFIG_DIR="$(ask_value 'Diretório de configuração' "$DEFAULT_CONFIG_DIR")"
-  confirm_value "Diretório de configuração" "$CONFIG_DIR"
-
-  STATE_DIR="$(ask_value 'Diretório de estado persistente' "$DEFAULT_STATE_DIR")"
-  confirm_value "Diretório de estado" "$STATE_DIR"
-
-  RUNTIME_DIR="$(ask_value 'Diretório de runtime' "$DEFAULT_RUNTIME_DIR")"
-  confirm_value "Diretório de runtime" "$RUNTIME_DIR"
-
-  SERVICE_USER="$(ask_value 'Usuário de serviço' "$DEFAULT_SERVICE_USER")"
-  confirm_value "Usuário de serviço" "$SERVICE_USER"
-
-  SERVICE_GROUP="$(ask_value 'Grupo de serviço' "$DEFAULT_SERVICE_GROUP")"
-  confirm_value "Grupo de serviço" "$SERVICE_GROUP"
-
-  if ask_yes_no "Criar/usar usuário e grupo de serviço dedicados?" "Y"; then
-    CREATE_SERVICE_ACCOUNT="yes"
-  else
-    CREATE_SERVICE_ACCOUNT="no"
-  fi
-  confirm_value "Criar conta de serviço" "$CREATE_SERVICE_ACCOUNT"
-
-  DEFAULT_CLIENT_USER="$(detect_client_user)"
-  CLIENT_USER="$(ask_value 'Usuário cliente autorizado a consumir os sockets (vazio = nenhum)' "$DEFAULT_CLIENT_USER")"
-  if [[ -n "$CLIENT_USER" ]]; then
-    confirm_value "Usuário cliente" "$CLIENT_USER"
-  else
-    info "nenhum usuário cliente será adicionado ao grupo do serviço."
-  fi
-
-  UNIT_PATH="$(ask_value 'Caminho da unit systemd' "$DEFAULT_UNIT_PATH")"
-  confirm_value "Unit systemd" "$UNIT_PATH"
-
-  validate_binary "$BIN_SOURCE"
-
-  if supports_daemon_mode "$BIN_SOURCE"; then
-    if ask_yes_no "O binário suporta --config. Instalar serviço systemd?" "Y"; then
-      INSTALL_SYSTEMD="yes"
-    else
-      INSTALL_SYSTEMD="no"
-    fi
-  else
-    warn "o binário atual NÃO expõe --config; ele ainda é o bootstrap do projeto."
-    warn "um serviço systemd criado agora encerraria imediatamente em vez de atuar como daemon."
-    INSTALL_SYSTEMD="no"
-    info "systemd será ignorado nesta instalação."
-  fi
-  confirm_value "Instalar serviço systemd" "$INSTALL_SYSTEMD"
-
-  if [[ "$INSTALL_SYSTEMD" == "yes" && "$CREATE_SERVICE_ACCOUNT" != "yes" ]]; then
-    die "a instalação systemd requer usuário/grupo de serviço dedicados."
-  fi
-
-  CREATE_BOOTSTRAP_CONFIG="no"
-  if [[ "$INSTALL_SYSTEMD" == "yes" ]]; then
-    if [[ -e "$CONFIG_DIR/config.yaml" ]]; then
-      CREATE_BOOTSTRAP_CONFIG="existing"
-      info "configuração existente será utilizada: $CONFIG_DIR/config.yaml"
-    elif ask_yes_no "config.yaml não existe. Criar configuração bootstrap?" "Y"; then
-      CREATE_BOOTSTRAP_CONFIG="yes"
-    else
-      die "o serviço requer $CONFIG_DIR/config.yaml."
-    fi
-    confirm_value "Configuração bootstrap" "$CREATE_BOOTSTRAP_CONFIG"
-  fi
-
-  print_summary
-  ask_yes_no "Executar a instalação com estes parâmetros?" "N" || die "instalação cancelada."
-
-  if [[ "$CREATE_SERVICE_ACCOUNT" == "yes" ]]; then
-    create_service_account "$SERVICE_USER" "$SERVICE_GROUP" "$STATE_DIR"
-  fi
-
-  if [[ -n "$CLIENT_USER" ]]; then
-    authorize_client_user "$CLIENT_USER" "$SERVICE_GROUP"
-  fi
-
-  install_binary "$BIN_SOURCE" "$BIN_TARGET"
-  prepare_directories "$CONFIG_DIR" "$STATE_DIR" "$RUNTIME_DIR" "$SERVICE_USER" "$SERVICE_GROUP" "$CREATE_SERVICE_ACCOUNT"
-
-  if [[ "$INSTALL_SYSTEMD" == "yes" ]]; then
-    [[ "$CREATE_SERVICE_ACCOUNT" == "yes" ]] || die "systemd requer usuário/grupo de serviço dedicados neste instalador."
-    if [[ "$CREATE_BOOTSTRAP_CONFIG" == "yes" ]]; then
-      create_bootstrap_config "$CONFIG_DIR" "$SERVICE_GROUP"
-    fi
-
-    create_systemd_unit "$UNIT_PATH" "$BIN_TARGET" "$CONFIG_DIR" "$SERVICE_USER" "$SERVICE_GROUP"
-
-    warn "o serviço não será habilitado nem iniciado automaticamente."
-    info "revise primeiro: $CONFIG_DIR/config.yaml"
-    info "depois execute, se apropriado: sudo systemctl enable --now $APP_NAME"
-  fi
-
-  echo
-  ok "instalação concluída."
-  info "teste: $BIN_TARGET --version"
-  info "caminhos: $BIN_TARGET --show-paths"
-  info "socket esperado: $RUNTIME_DIR/routes/generate.sock"
-
-  if [[ "$INSTALL_SYSTEMD" == "no" ]]; then
-    info "nenhum serviço systemd foi instalado."
-  fi
-}
-
-main "$@"\t'}"
-
-    if [[ ! -S "$socket" ]]; then
-      print_service_diagnostics
-      die "rota $key não ficou disponível após ${timeout_seconds}s: $socket"
-    fi
-
-    if command -v stat >/dev/null 2>&1; then
-      mode="$(stat -c '%a' "$socket" 2>/dev/null || true)"
-      group="$(stat -c '%G' "$socket" 2>/dev/null || true)"
-      [[ "$mode" == "660" ]] || die "permissão inesperada na rota $key: esperado 0660, encontrado ${mode:-?}"
-      [[ "$group" == "$expected_group" ]] || die "grupo inesperado na rota $key: esperado $expected_group, encontrado ${group:-?}"
-    fi
-
-    ok "rota disponível: $key -> $socket"
-  done
-}
-
-start_or_restart_service() {
-  local bin="$1" runtime_dir="$2" expected_group="$3"
-
-  if "${SUDO[@]}" systemctl is-active --quiet "$APP_NAME"; then
-    info "serviço já está ativo; reiniciando para carregar o binário instalado..."
-    if ! "${SUDO[@]}" systemctl restart "$APP_NAME"; then
-      print_service_diagnostics
-      die "falha ao reiniciar $APP_NAME."
-    fi
-  else
-    info "iniciando serviço $APP_NAME..."
-    if ! "${SUDO[@]}" systemctl start "$APP_NAME"; then
-      print_service_diagnostics
-      die "falha ao iniciar $APP_NAME."
-    fi
-  fi
-
-  validate_published_routes "$bin" "$runtime_dir" "$expected_group" 10
-  ok "serviço ativo e rotas públicas disponíveis."
-}
-print_summary() {
-  cat <<__SUMMARY__
-
-============================================================
-Resumo da instalação
-============================================================
-Binário de origem : $BIN_SOURCE
-Binário instalado : $BIN_TARGET
-Configuração       : $CONFIG_DIR
-Estado persistente : $STATE_DIR
-Runtime            : $RUNTIME_DIR
-Usuário de serviço : $SERVICE_USER
-Grupo de serviço   : $SERVICE_GROUP
-Usuário cliente    : ${CLIENT_USER:-nenhum}
-Criar conta serviço: $CREATE_SERVICE_ACCOUNT
-Instalar systemd   : $INSTALL_SYSTEMD
-Config bootstrap    : ${CREATE_BOOTSTRAP_CONFIG:-no}
-Unit systemd       : $UNIT_PATH
-============================================================
-__SUMMARY__
-}
-
-main() {
-  case "${1:-}" in
-    -h|--help|help)
-      usage
-      exit 0
-      ;;
-  esac
-
-  require_interactive
-
-  [[ $# -le 1 ]] || { usage >&2; exit 2; }
-
-  check_debian_family
-  setup_privilege_command
-  ensure_debian_packages
-  load_existing_unit_defaults
-
-  DEFAULT_BIN_SOURCE="${1:-$(detect_binary_default)}"
-
-  echo
-  printf '%sConfiguração interativa%s\n' "$C_BOLD" "$C_RESET"
-  echo "Cada parâmetro será confirmado individualmente."
-
-  BIN_SOURCE="$(ask_value 'Caminho do binário compilado' "$DEFAULT_BIN_SOURCE")"
-  [[ -e "$BIN_SOURCE" ]] || die "arquivo não encontrado: $BIN_SOURCE"
-  BIN_SOURCE="$(absolute_path "$BIN_SOURCE")"
-  confirm_value "Binário de origem" "$BIN_SOURCE"
-
-  BIN_TARGET="$(ask_value 'Destino do executável' "$DEFAULT_BIN_TARGET")"
-  confirm_value "Destino do executável" "$BIN_TARGET"
-
-  CONFIG_DIR="$(ask_value 'Diretório de configuração' "$DEFAULT_CONFIG_DIR")"
-  confirm_value "Diretório de configuração" "$CONFIG_DIR"
-
-  STATE_DIR="$(ask_value 'Diretório de estado persistente' "$DEFAULT_STATE_DIR")"
-  confirm_value "Diretório de estado" "$STATE_DIR"
-
-  RUNTIME_DIR="$(ask_value 'Diretório de runtime' "$DEFAULT_RUNTIME_DIR")"
-  confirm_value "Diretório de runtime" "$RUNTIME_DIR"
-
-  SERVICE_USER="$(ask_value 'Usuário de serviço' "$DEFAULT_SERVICE_USER")"
-  confirm_value "Usuário de serviço" "$SERVICE_USER"
-
-  SERVICE_GROUP="$(ask_value 'Grupo de serviço' "$DEFAULT_SERVICE_GROUP")"
-  confirm_value "Grupo de serviço" "$SERVICE_GROUP"
-
-  if ask_yes_no "Criar/usar usuário e grupo de serviço dedicados?" "Y"; then
-    CREATE_SERVICE_ACCOUNT="yes"
-  else
-    CREATE_SERVICE_ACCOUNT="no"
-  fi
-  confirm_value "Criar conta de serviço" "$CREATE_SERVICE_ACCOUNT"
-
-  DEFAULT_CLIENT_USER="$(detect_client_user)"
-  CLIENT_USER="$(ask_value 'Usuário cliente autorizado a consumir os sockets (vazio = nenhum)' "$DEFAULT_CLIENT_USER")"
-  if [[ -n "$CLIENT_USER" ]]; then
-    confirm_value "Usuário cliente" "$CLIENT_USER"
-  else
-    info "nenhum usuário cliente será adicionado ao grupo do serviço."
-  fi
-
-  UNIT_PATH="$(ask_value 'Caminho da unit systemd' "$DEFAULT_UNIT_PATH")"
-  confirm_value "Unit systemd" "$UNIT_PATH"
-
-  validate_binary "$BIN_SOURCE"
-
-  if supports_daemon_mode "$BIN_SOURCE"; then
-    if ask_yes_no "O binário suporta --config. Instalar serviço systemd?" "Y"; then
-      INSTALL_SYSTEMD="yes"
-    else
-      INSTALL_SYSTEMD="no"
-    fi
-  else
-    warn "o binário atual NÃO expõe --config; ele ainda é o bootstrap do projeto."
-    warn "um serviço systemd criado agora encerraria imediatamente em vez de atuar como daemon."
-    INSTALL_SYSTEMD="no"
-    info "systemd será ignorado nesta instalação."
-  fi
-  confirm_value "Instalar serviço systemd" "$INSTALL_SYSTEMD"
-
-  if [[ "$INSTALL_SYSTEMD" == "yes" && "$CREATE_SERVICE_ACCOUNT" != "yes" ]]; then
-    die "a instalação systemd requer usuário/grupo de serviço dedicados."
-  fi
-
-  CREATE_BOOTSTRAP_CONFIG="no"
-  if [[ "$INSTALL_SYSTEMD" == "yes" ]]; then
-    if [[ -e "$CONFIG_DIR/config.yaml" ]]; then
-      CREATE_BOOTSTRAP_CONFIG="existing"
-      info "configuração existente será utilizada: $CONFIG_DIR/config.yaml"
-    elif ask_yes_no "config.yaml não existe. Criar configuração bootstrap?" "Y"; then
-      CREATE_BOOTSTRAP_CONFIG="yes"
-    else
-      die "o serviço requer $CONFIG_DIR/config.yaml."
-    fi
-    confirm_value "Configuração bootstrap" "$CREATE_BOOTSTRAP_CONFIG"
-  fi
-
-  print_summary
-  ask_yes_no "Executar a instalação com estes parâmetros?" "N" || die "instalação cancelada."
-
-  if [[ "$CREATE_SERVICE_ACCOUNT" == "yes" ]]; then
-    create_service_account "$SERVICE_USER" "$SERVICE_GROUP" "$STATE_DIR"
-  fi
-
-  if [[ -n "$CLIENT_USER" ]]; then
-    authorize_client_user "$CLIENT_USER" "$SERVICE_GROUP"
-  fi
-
-  install_binary "$BIN_SOURCE" "$BIN_TARGET"
-  prepare_directories "$CONFIG_DIR" "$STATE_DIR" "$RUNTIME_DIR" "$SERVICE_USER" "$SERVICE_GROUP" "$CREATE_SERVICE_ACCOUNT"
-
-  if [[ "$INSTALL_SYSTEMD" == "yes" ]]; then
-    [[ "$CREATE_SERVICE_ACCOUNT" == "yes" ]] || die "systemd requer usuário/grupo de serviço dedicados neste instalador."
-    if [[ "$CREATE_BOOTSTRAP_CONFIG" == "yes" ]]; then
-      create_bootstrap_config "$CONFIG_DIR" "$SERVICE_GROUP"
-    fi
-
-    create_systemd_unit "$UNIT_PATH" "$BIN_TARGET" "$CONFIG_DIR" "$SERVICE_USER" "$SERVICE_GROUP"
-
-    warn "o serviço não será habilitado nem iniciado automaticamente."
-    info "revise primeiro: $CONFIG_DIR/config.yaml"
-    info "depois execute, se apropriado: sudo systemctl enable --now $APP_NAME"
-  fi
-
-  echo
-  ok "instalação concluída."
-  info "teste: $BIN_TARGET --version"
-  info "caminhos: $BIN_TARGET --show-paths"
-  info "socket esperado: $RUNTIME_DIR/routes/generate.sock"
 
   if [[ "$INSTALL_SYSTEMD" == "no" ]]; then
     info "nenhum serviço systemd foi instalado."
