@@ -2,7 +2,7 @@
 
 ## Responsabilidade
 
-Esta etapa recebe o `GenerationResult` produzido pelo `bash-generator` e decide se o resultado pode seguir para materialização.
+Recebe o `GenerationPlan` e todas as versões de capabilities resolvidas.
 
 Não utiliza LLM.
 
@@ -10,92 +10,114 @@ Não utiliza LLM.
 
 ```proto
 message ValidationRequest {
-  GenerationResult generation = 1;
+  GenerationPlan plan = 1;
+  repeated CapabilityDefinition resolved_capabilities = 2;
 }
 ```
 
-## Validações
+## Ordem de validação
 
-A aplicação deve verificar, no mínimo:
+```text
+protobuf validation
+      |
+      v
+graph validation
+      |
+      v
+contract validation
+      |
+      v
+capability version validation
+      |
+      v
+policy validation
+      |
+      v
+deterministic Bash assembly preview
+      |
+      v
+bash -n
+      |
+      v
+ShellCheck
+      |
+      v
+dependency validation
+```
 
-1. status da geração;
-2. referências `result_ref`;
-3. existência das capabilities utilizadas;
-4. compatibilidade entre entrada e saída das chamadas;
-5. argumentos obrigatórios;
-6. dependências permitidas;
-7. sintaxe Bash;
-8. políticas de segurança;
-9. novas capabilities geradas;
-10. duplicidade de novas capabilities.
+O script nunca é executado.
 
-### Bash
+## Grafo
 
-A primeira validação sintática pode usar:
+Validar:
+
+- resultados únicos;
+- `result_ref` existente;
+- dependências de controle;
+- ciclos;
+- um único stream estruturado por stdin;
+- restrições de fan-out/fan-in.
+
+## Contratos
+
+Validar:
+
+- `DataKind`;
+- campos obrigatórios;
+- `StreamEncoding`;
+- scalar x stream;
+- argumentos obrigatórios;
+- stdout da produtora compatível com stdin da consumidora.
+
+## Versions
+
+Toda capability existente usada no plano deve possuir:
+
+```text
+capability_version_id
+version
+checksum
+```
+
+e deve estar presente em `resolved_capabilities`.
+
+## Segurança
+
+Rejeitar conforme política:
+
+- `eval` quando não explicitamente permitido;
+- escrita destrutiva não autorizada;
+- comandos não permitidos;
+- dependências não declaradas;
+- caminhos fora de escopo quando aplicável;
+- uso de rede fora das capabilities autorizadas.
+
+## Bash
+
+O assembler cria uma prévia deterministicamente a partir do plano.
+
+Executar:
 
 ```text
 bash -n
+ShellCheck
 ```
 
-A validação deve ocorrer de forma controlada. O script não deve ser executado.
-
-### Capabilities existentes
-
-Toda capability usada deve ter sido obtida por `get_capability`.
-
-O gerador não pode inventar implementação, parâmetros ou contratos de uma capability apenas a partir do resultado resumido de `search_capabilities`.
-
-### Capabilities novas
-
-Uma nova capability deve ser:
-
-- genérica;
-- parametrizada;
-- independente dos valores concretos da solicitação;
-- compatível com seu contrato de entrada;
-- compatível com seu contrato de saída;
-- deduplicada contra o catálogo;
-- aprovada pelas políticas de segurança.
+`ShellCheck` deve fazer parte da instalação de validação da primeira versão. Se estiver indisponível por falha de ambiente, a validação deve falhar de forma explícita em vez de ser silenciosamente ignorada.
 
 ## Saída
 
 ```proto
-message ValidationIssue {
-  string code = 1;
-  string message = 2;
-}
-
 message ValidationResult {
   bool valid = 1;
-  GenerationResult generation = 2;
-  repeated ValidationIssue issues = 3;
+  GenerationPlan plan = 2;
+  repeated CapabilityDefinition resolved_capabilities = 3;
+  repeated ValidationIssue issues = 4;
 }
 ```
 
-Exemplo:
+## Correção
 
-```textproto
-valid: true
+Por política, pode existir no máximo uma nova tentativa do `bash-generator` usando a lista estruturada de `ValidationIssue`.
 
-generation {
-  status: GENERATION_STATUS_READY
-  final_output_ref: "sortedList"
-}
-```
-
-Resultado inválido:
-
-```textproto
-valid: false
-
-issues {
-  code: "RESULT_REF_NOT_FOUND"
-  message: "filteredList references an unknown previous result."
-}
-```
-
-## Falha
-
-Se `valid = false`, o arquivo Bash não deve ser criado.
-
-A aplicação pode devolver os erros ou, quando configurado, realizar no máximo uma tentativa de correção pelo `bash-generator`.
+Se a segunda validação falhar, não criar o arquivo.
