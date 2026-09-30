@@ -2,11 +2,11 @@
 
 ## Responsabilidade
 
-Esta é a última etapa do pipeline.
-
-Ela recebe uma geração já validada e produz o arquivo Bash entregue ao cliente.
+Materializar deterministicamente o arquivo Bash a partir de um `ValidationResult` válido.
 
 Não utiliza LLM.
+
+Publicação de capability e gravação de arquivo são operações independentes.
 
 ## Entrada
 
@@ -17,51 +17,124 @@ message BashOutputRequest {
 }
 ```
 
-A etapa só aceita:
+Somente aceita:
 
 ```text
 validation.valid = true
 ```
 
-## Processamento
+## Montagem determinística
 
-A aplicação deve:
+O arquivo é derivado de:
 
-1. obter o script validado;
-2. garantir shebang apropriado;
-3. normalizar final de linha;
-4. definir nome seguro para o arquivo;
-5. calcular checksum;
-6. persistir novas capabilities aprovadas;
-7. criar o artefato Bash;
-8. devolver o conteúdo ou gravar no destino autorizado.
+- `GenerationPlan.calls`;
+- versões resolvidas;
+- novas capabilities validadas;
+- bindings literais;
+- `stdin_result_ref`;
+- `final_output_ref`.
 
-## Capability reutilizável
+Não existe script livre produzido pelo LLM.
 
-Quando o `bash-generator` produzir uma nova função, existem dois resultados distintos:
+## Pipelines
 
-```text
-capability genérica
-        +
-invocação específica da requisição
-        =
-arquivo Bash final
-```
-
-Exemplo:
+Para streams:
 
 ```bash
-list_directory_details() {
-    local path="$1"
-    # implementação reutilizável
-}
-
-list_directory_details "$HOME/ambiente"
+producer ... |
+consumer ... |
+final_stage ...
 ```
 
-A função genérica pode ser persistida no catálogo após a validação.
+O assembler deve incluir:
 
-O valor `$HOME/ambiente` pertence somente à invocação atual.
+```bash
+set -euo pipefail
+```
+
+`stdout` é dado funcional e `stderr` é diagnóstico.
+
+## Valores shell
+
+Valores literais são tratados como dados.
+
+O materializador é responsável por quoting e representação shell.
+
+Exemplo semântico:
+
+```text
+~/ambiente
+```
+
+pode ser materializado de forma segura como:
+
+```bash
+"$HOME/ambiente"
+```
+
+Não se deve gerar:
+
+```bash
+"~/ambiente"
+```
+
+quando expansão de home for necessária.
+
+## Publicação de novas capabilities
+
+O Bash Output não grava diretamente o catálogo.
+
+Após validação, o Pipeline pode executar em paralelo:
+
+```text
+Capability Publisher
+Bash Output
+```
+
+Publisher:
+
+```proto
+message CapabilityPublishRequest {
+  string request_id = 1;
+  string idempotency_key = 2;
+  GeneratedCapability capability = 3;
+}
+```
+
+A operação é idempotente e protegida por fingerprint única.
+
+Falha de publicação não corrompe o arquivo já materializado; falha de filesystem não desfaz uma publicação válida.
+
+## Arquivo
+
+Processo:
+
+```text
+gerar conteúdo em memória
+      |
+      v
+calcular sha256
+      |
+      v
+gravar temporário
+      |
+      v
+fsync
+      |
+      v
+chmod
+      |
+      v
+rename atômico
+```
+
+Permissão inicial:
+
+```text
+0640
+```
+
+Tornar executável é uma operação explícita posterior.
 
 ## Saída
 
@@ -74,40 +147,4 @@ message BashArtifact {
 }
 ```
 
-Exemplo:
-
-```textproto
-filename: "list-executable-files.sh"
-content: "#!/usr/bin/env bash\n..."
-sha256: "..."
-final_output_ref: "sortedList"
-```
-
-## Escrita em disco
-
-Quando a aplicação gravar o arquivo:
-
-```text
-gerar temporário
-      |
-      v
-fsync
-      |
-      v
-chmod
-      |
-      v
-rename atômico
-```
-
-O arquivo não deve ser executado automaticamente.
-
-## Permissões
-
-Permissão inicial sugerida para arquivos gerados:
-
-```text
-0640
-```
-
-A decisão de tornar o script executável deve ser explícita e separada da geração.
+O arquivo não é executado automaticamente.
