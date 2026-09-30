@@ -68,7 +68,9 @@ Um agente contém, no mínimo:
 
 A documentação detalhada está em [docs/AGENTS.md](docs/AGENTS.md).
 
-O fluxo de normalização da requisição está em [docs/REQUEST_FLOW.md](docs/REQUEST_FLOW.md).
+O pipeline geral está em [docs/REQUEST_FLOW.md](docs/REQUEST_FLOW.md).
+
+O contrato e as regras da `NormalizedRequest` estão em [docs/NORMALIZED_REQUEST.md](docs/NORMALIZED_REQUEST.md).
 
 ### MCP
 
@@ -117,27 +119,31 @@ llama-server
 Solicitação do usuário
         |
         v
-request-organizer
+request-normalizer
         |
         v
-TaskSpec
+NormalizedRequest
+        |
+        v
+search_capabilities
         |
         v
 bash-generator
         |
-        +--> consulta MCPs permitidos
+        +--> reutiliza capability existente
+        |
+        +--> ou gera nova capability parametrizada
         |
         v
-ScriptArtifact
+validação
         |
-        v
-validação + telemetria
+        +--> capability nova válida retorna ao catálogo
         |
         v
 script Bash
 ```
 
-O primeiro agente organiza a solicitação. O segundo agente gera o script e pode consultar MCPs para localizar funções, aplicações ou informações necessárias.
+A aplicação transforma a solicitação em uma representação técnica curta em inglês, pesquisa capacidades reutilizáveis e usa o gerador para escolher uma existente ou produzir uma nova função parametrizada.
 
 ## Catálogo de funções
 
@@ -147,15 +153,17 @@ O Function Catalog armazenará funções reutilizáveis, incluindo:
 - versão;
 - linguagem;
 - descrição;
+- instrução de correspondência;
+- descrição resumida da entrada;
+- descrição resumida da saída;
 - implementação;
-- entradas;
-- saídas;
+- contratos detalhados de entrada e saída;
 - dependências;
 - plataformas suportadas;
 - complexidade;
 - checksum.
 
-O uso real das funções será registrado separadamente.
+Cada chamada de `get_capability` será registrada em uma tabela append-only, permitindo medir quais capacidades são consultadas em profundidade pelos agentes.
 
 Funções muito utilizadas ou de alta complexidade poderão gerar uma iniciativa para transformação em aplicação ou script independente.
 
