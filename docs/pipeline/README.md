@@ -63,7 +63,9 @@ Schema canônico: [pipeline.proto](../../proto/ai_bash_gen/v1/pipeline.proto).
 
 Visualização dos fluxos: [SEQUENCE_DIAGRAMS.md](SEQUENCE_DIAGRAMS.md).
 
-Problemas e riscos de arquitetura: [../analysis/ARCHITECTURE_REVIEW.md](../analysis/ARCHITECTURE_REVIEW.md).
+Revisão de arquitetura atual: [../analysis/ARCHITECTURE_REVIEW_V2.md](../analysis/ARCHITECTURE_REVIEW_V2.md).
+
+Histórico V1: [../analysis/ARCHITECTURE_REVIEW.md](../analysis/ARCHITECTURE_REVIEW.md).
 
 ## Princípio
 
