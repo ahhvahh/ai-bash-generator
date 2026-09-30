@@ -19,21 +19,27 @@ UserRequest
     v
 04 bash-generator                 [LLM]
     |
-    +--> get_capability(id)
+    +--> GeneratorToolRequests
     |       |
-    |       +--> append capability_usage
+    |       +--> ai-bash-gen Tool Orchestrator
+    |                 |
+    |                 +--> get_capability
+    |                 +--> generation-time MCP
+    |
+    v
+GenerationPlan
     |
     v
 05 validation                     [determinístico]
     |
-    +--> valida GenerationResult
-    +--> valida Bash
-    +--> valida novas capabilities
+    +--> valida grafo, contratos e versões
+    +--> bash -n + ShellCheck
+    |
+    +--> Capability Publisher      [idempotente]
     |
     v
 06 bash-output                    [determinístico]
     |
-    +--> persiste capabilities aprovadas
     +--> monta arquivo .sh
     |
     v
@@ -47,8 +53,8 @@ arquivo Bash final
 | 01 | [request-normalizer](01_REQUEST_NORMALIZER.md) | sim | `UserRequest` | `NormalizedRequest` |
 | 02 | [NormalizedRequest](02_NORMALIZED_REQUEST.md) | não | TextProto do normalizador | objeto validado |
 | 03 | [search_capabilities](03_SEARCH_CAPABILITIES.md) | não | `SearchCapabilitiesRequest` | `SearchCapabilitiesResponse` |
-| 04 | [bash-generator](04_BASH_GENERATOR.md) | sim | `GenerationRequest` | `GenerationResult` |
-| 05 | [validation](05_VALIDATION.md) | não | `GenerationResult` | `ValidationResult` |
+| 04 | [bash-generator](04_BASH_GENERATOR.md) | sim | `GeneratorTurnRequest` | `GeneratorTurnResult` / `GenerationPlan` |
+| 05 | [validation](05_VALIDATION.md) | não | `ValidationRequest` | `ValidationResult` |
 | 06 | [bash-output](06_BASH_OUTPUT.md) | não | geração validada | `BashArtifact` / arquivo `.sh` |
 
 Referência comum: [Contratos Protobuf](PROTOBUF.md).
@@ -97,7 +103,7 @@ sort_by_size
 final output
 ```
 
-Uma capability composta pode substituir várias tarefas quando seus contratos de entrada e saída atenderem ao fluxo completo.
+Uma capability composta pode substituir várias tarefas quando seus contratos estruturados de entrada e saída atenderem ao fluxo completo. Resultados encadeados usam `stdout -> stdin`; o `DataContract` valida tipo, campos e encoding.
 
 ## Regra de transporte
 
