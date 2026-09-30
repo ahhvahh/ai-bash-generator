@@ -221,20 +221,26 @@ user_has_registered_group() {
 
 session_user_has_group() {
   local user="$1" group="$2"
-  local target_uid group_gid pid proc_uid proc_ppid groups_line
+  local target_uid group_gid pid proc_uid proc_gid proc_ppid groups_line
 
   target_uid="$(id -u "$user" 2>/dev/null)" || return 2
   group_gid="$(getent group "$group" 2>/dev/null | awk -F: '{print $3; exit}')"
   [[ -n "$group_gid" ]] || return 2
 
-  pid="$"
-  while [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 && -r "/proc/$pid/status" ]]; do
+  pid="$(awk '/^Tgid:/ {print $2; exit}' /proc/self/status 2>/dev/null || true)"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 2
+
+  while [[ "$pid" -gt 1 && -r "/proc/$pid/status" ]]; do
     proc_uid="$(awk '/^Uid:/ {print $2; exit}' "/proc/$pid/status" 2>/dev/null || true)"
     if [[ "$proc_uid" == "$target_uid" ]]; then
+      proc_gid="$(awk '/^Gid:/ {print $2; exit}' "/proc/$pid/status" 2>/dev/null || true)"
+      [[ "$proc_gid" == "$group_gid" ]] && return 0
+
       groups_line="$(awk '/^Groups:/ {$1=""; sub(/^ /, ""); print; exit}' "/proc/$pid/status" 2>/dev/null || true)"
       tr ' ' '\n' <<<"$groups_line" | grep -Fxq "$group_gid"
       return $?
     fi
+
     proc_ppid="$(awk '/^PPid:/ {print $2; exit}' "/proc/$pid/status" 2>/dev/null || true)"
     [[ "$proc_ppid" =~ ^[0-9]+$ ]] || return 2
     pid="$proc_ppid"
@@ -242,7 +248,6 @@ session_user_has_group() {
 
   return 2
 }
-
 check_client_session_group() {
   local user="$1" group="$2" rc
 
