@@ -18,6 +18,55 @@ Regras gerais:
 - MCPs locais utilizam preferencialmente `stdio`;
 - serviços externos são acessados somente pelo MCP que necessita da conexão.
 
+## Tool de geração x capability de runtime
+
+Existem dois conceitos diferentes.
+
+### Generation-time tool
+
+É utilizada pelo `bash-generator` enquanto o arquivo está sendo criado.
+
+Exemplos:
+
+```text
+search_capabilities
+get_capability
+google-mail.search_emails
+google-mail.get_email
+```
+
+Essas chamadas sempre passam pelo `ai-bash-gen Tool/MCP Orchestrator`.
+
+O protocolo usa `GeneratorToolRequest` / `GeneratorToolResponse`.
+
+Para MCPs genéricos:
+
+```text
+McpToolRequest
+ToolPayload(schema + TextProto)
+McpToolResult
+```
+
+### Runtime capability
+
+É uma função, script, aplicação ou serviço que será invocado pelo arquivo Bash no futuro.
+
+Uma tool disponível ao LLM durante a geração não fica automaticamente disponível ao script.
+
+Exemplo:
+
+```text
+"leia meu e-mail agora e gere o arquivo"
+    -> generation-time tool
+
+"gere um script que consulte e-mail amanhã"
+    -> runtime capability
+```
+
+A segunda solicitação exige uma capability de runtime explicitamente cadastrada e autorizada.
+
+---
+
 ## 1. Capability Catalog MCP
 
 Nome lógico:
