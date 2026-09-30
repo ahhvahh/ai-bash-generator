@@ -145,7 +145,7 @@ run_tests() {
     go test ./...
   )
   echo '[tests] test-installer.sh'
-  "$INSTALLER_TEST_SCRIPT"
+  bash "$INSTALLER_TEST_SCRIPT"
 }
 
 build_go() {
