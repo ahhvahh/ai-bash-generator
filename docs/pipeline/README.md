@@ -81,6 +81,7 @@ Etapas suportadas:
 
 ```text
 request-normalizer
+normalized-request
 search-capabilities
 bash-generator
 validation
@@ -91,6 +92,7 @@ Exemplos com o cliente oficial:
 
 ```bash
 ai-bash-gen-client --stage request-normalizer "diagnostique o serviço ssh"
+ai-bash-gen-client --stage normalized-request "diagnostique o serviço ssh"
 ai-bash-gen-client --stage search-capabilities "diagnostique o serviço ssh"
 ai-bash-gen-client --stage bash-generator "diagnostique o serviço ssh"
 ai-bash-gen-client --stage validation "diagnostique o serviço ssh"
@@ -101,7 +103,7 @@ Não existem rotas públicas separadas para as etapas. Os processos LLM internos
 
 ### Estado de implementação
 
-O runtime já executa o `request-normalizer` real e a pesquisa PostgreSQL por requisição completa e por tarefa. O `bash-generator` recebe a `NormalizedRequest` e os candidatos encontrados.
+O runtime já executa o `request-normalizer` real, valida separadamente a `NormalizedRequest` e executa a pesquisa PostgreSQL por requisição completa e por tarefa. O `bash-generator` recebe a `NormalizedRequest` e os candidatos encontrados.
 
 A evolução para o `GenerationPlan` completo, `get_capability` sob demanda e materialização determinística descrita neste documento continua sendo o contrato arquitetural alvo. Enquanto esse tool loop não estiver concluído, o runtime do `bash-generator` ainda produz a fonte Bash diretamente e a etapa seguinte executa `bash -n`.
 
