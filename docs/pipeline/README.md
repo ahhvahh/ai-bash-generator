@@ -67,6 +67,44 @@ Revisão de arquitetura atual: [../analysis/ARCHITECTURE_REVIEW_V2.md](../analys
 
 Histórico V1: [../analysis/ARCHITECTURE_REVIEW.md](../analysis/ARCHITECTURE_REVIEW.md).
 
+## Diagnóstico por etapa no mesmo socket
+
+A rota pública permanece única:
+
+```text
+/run/ai-bash-gen/routes/generate.sock
+```
+
+`GenerateRequest.target_stage` permite executar todos os pré-requisitos e interromper o processamento depois da etapa selecionada. Isso é usado pelo cliente para inspecionar a saída intermediária sem criar sockets adicionais.
+
+Etapas suportadas:
+
+```text
+request-normalizer
+search-capabilities
+bash-generator
+validation
+bash-output
+```
+
+Exemplos com o cliente oficial:
+
+```bash
+ai-bash-gen-client --stage request-normalizer "diagnostique o serviço ssh"
+ai-bash-gen-client --stage search-capabilities "diagnostique o serviço ssh"
+ai-bash-gen-client --stage bash-generator "diagnostique o serviço ssh"
+ai-bash-gen-client --stage validation "diagnostique o serviço ssh"
+ai-bash-gen-client --stage bash-output --out ./diagnostico.sh "diagnostique o serviço ssh"
+```
+
+Não existem rotas públicas separadas para as etapas. Os processos LLM internos usam sockets privados distintos para `request-normalizer` e `bash-generator`.
+
+### Estado de implementação
+
+O runtime já executa o `request-normalizer` real e a pesquisa PostgreSQL por requisição completa e por tarefa. O `bash-generator` recebe a `NormalizedRequest` e os candidatos encontrados.
+
+A evolução para o `GenerationPlan` completo, `get_capability` sob demanda e materialização determinística descrita neste documento continua sendo o contrato arquitetural alvo. Enquanto esse tool loop não estiver concluído, o runtime do `bash-generator` ainda produz a fonte Bash diretamente e a etapa seguinte executa `bash -n`.
+
 ## Princípio
 
 Os LLMs ficam restritos às etapas que realmente exigem interpretação ou geração:
