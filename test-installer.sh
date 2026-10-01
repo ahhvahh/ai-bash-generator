@@ -57,6 +57,56 @@ grep -Fq -- '--target llama-server' "$ROOT/install-binary.sh" || fail "instalado
 grep -Fq -- '-DBUILD_SHARED_LIBS=OFF' "$ROOT/install-binary.sh" || fail "build do llama.cpp não está configurado como estático"
 pass "instalação automática do llama.cpp está fixada e limitada ao llama-server"
 
+fake_llama_repo="$tmp/fake-llama-repo"
+mkdir -p "$fake_llama_repo"
+cat >"$fake_llama_repo/CMakeLists.txt" <<'EOF'
+cmake_minimum_required(VERSION 3.16)
+project(fake_llama NONE)
+set(OUT "${CMAKE_BINARY_DIR}/bin/llama-server")
+add_custom_command(
+  OUTPUT "${OUT}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/bin"
+  COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_SOURCE_DIR}/llama-server.sh" "${OUT}"
+  COMMAND /bin/chmod +x "${OUT}"
+  DEPENDS "${CMAKE_SOURCE_DIR}/llama-server.sh"
+)
+add_custom_target(llama-server DEPENDS "${OUT}")
+EOF
+cat >"$fake_llama_repo/llama-server.sh" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "--help" ]]; then
+  echo '  --host HOST bind to UNIX socket when HOST ends with .sock'
+  exit 0
+fi
+exit 0
+EOF
+git -C "$fake_llama_repo" init -q
+git -C "$fake_llama_repo" config user.name "CI"
+git -C "$fake_llama_repo" config user.email "ci@example.invalid"
+git -C "$fake_llama_repo" add CMakeLists.txt llama-server.sh
+git -C "$fake_llama_repo" commit -q -m "fake llama"
+git -C "$fake_llama_repo" tag v-test
+
+saved_llama_repo="$LLAMA_CPP_REPOSITORY"
+saved_llama_version="$LLAMA_CPP_VERSION"
+saved_llama_commit="$LLAMA_CPP_COMMIT"
+saved_build_packages=("${LLAMA_CPP_BUILD_PACKAGES[@]}")
+LLAMA_CPP_REPOSITORY="$fake_llama_repo"
+LLAMA_CPP_VERSION="v-test"
+LLAMA_CPP_COMMIT="$(git -C "$fake_llama_repo" rev-parse HEAD)"
+LLAMA_CPP_BUILD_PACKAGES=()
+SUDO=()
+
+fake_installed_llama="$tmp/installed/llama-server"
+install_llama_cpp_from_source "$fake_installed_llama"
+validate_llama_source "$fake_installed_llama" || fail "instalação automática não produziu llama-server válido"
+pass "fluxo de instalação automática compila e instala o target llama-server"
+
+LLAMA_CPP_REPOSITORY="$saved_llama_repo"
+LLAMA_CPP_VERSION="$saved_llama_version"
+LLAMA_CPP_COMMIT="$saved_llama_commit"
+LLAMA_CPP_BUILD_PACKAGES=("${saved_build_packages[@]}")
+
 fake_model="$tmp/model.gguf"
 printf 'GGUF-test\n' >"$fake_model"
 validate_model_source "$fake_model" || fail "modelo GGUF válido foi recusado"
