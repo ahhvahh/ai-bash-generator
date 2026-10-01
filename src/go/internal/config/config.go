@@ -386,8 +386,23 @@ func validateLlamaConfig(label string, cfg LlamaConfig) error {
 	return nil
 }
 
-func (c Config) NormalizerConfig() LlamaConfig { return c.Agents.RequestNormalizer }
-func (c Config) GeneratorConfig() LlamaConfig  { return c.Agents.BashGenerator }
+func (c Config) NormalizerConfig() LlamaConfig {
+	cfg := c.Agents.RequestNormalizer
+	if cfg.Binary == "" && cfg.Model == "" {
+		cfg = c.Llama
+	}
+	fillLlamaFallbacks(&cfg, c.Llama)
+	return cfg
+}
+
+func (c Config) GeneratorConfig() LlamaConfig {
+	cfg := c.Agents.BashGenerator
+	if cfg.Binary == "" && cfg.Model == "" {
+		cfg = c.Llama
+	}
+	fillLlamaFallbacks(&cfg, c.Llama)
+	return cfg
+}
 
 func (c Config) StartupTimeout() (time.Duration, error) {
 	return c.Agents.BashGenerator.StartupDuration()
