@@ -18,8 +18,6 @@ type Completer interface {
 	Complete(ctx context.Context, systemPrompt, userPrompt string) (string, error)
 }
 
-type ProgressFunc func(stage protocol.Stage, state protocol.ProgressState, message string) error
-
 type Runner struct {
 	completer Completer
 	timeout   time.Duration
@@ -29,7 +27,7 @@ func NewRunner(completer Completer, timeout time.Duration) *Runner {
 	return &Runner{completer: completer, timeout: timeout}
 }
 
-func (r *Runner) Generate(ctx context.Context, request protocol.GenerateRequest, progress ProgressFunc) (protocol.BashArtifact, error) {
+func (r *Runner) Generate(ctx context.Context, request protocol.GenerateRequest, progress func(protocol.Stage, protocol.ProgressState, string) error) (protocol.BashArtifact, error) {
 	if r.completer == nil {
 		return protocol.BashArtifact{}, errors.New("completer não configurado")
 	}
