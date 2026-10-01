@@ -61,7 +61,7 @@ Características:
   - só cria serviço systemd se o binário suportar --config;
   - verifica dependências Debian e oferece instalar pacotes ausentes;
   - detecta o llama-server; se estiver ausente, oferece compilar e instalar llama.cpp automaticamente;
-  - usa a versão fixa ${LLAMA_CPP_VERSION} do llama.cpp para uma instalação reproduzível;
+  - usa a versão fixa v0.5.0 do llama.cpp para uma instalação reproduzível;
   - exige um llama-server compatível com Unix Socket e um modelo GGUF;
   - instala cópias controladas do llama-server e do modelo para o serviço;
   - valida as dependências novamente pelo próprio binário Go antes de iniciar;
