@@ -295,6 +295,34 @@ Estado atual: o transporte Unix Socket, o streaming de progresso e um pipeline m
 O estágio `search_capabilities` ainda opera em modo mínimo, sem catálogo MCP/PostgreSQL; a integração completa do catálogo continua sendo uma evolução separada.
 
 
+
+### Logs estruturados no journald
+
+O serviço systemd envia `stdout` e `stderr` para o journald e instala, por padrão:
+
+```text
+AI_BASH_GEN_LOG_LEVEL=debug
+AI_BASH_GEN_LLAMA_LOG_VERBOSITY=5
+```
+
+Cada requisição recebe um `request_id`. O journal registra recebimento, início/fim de cada etapa, duração em milissegundos, chamada HTTP ao `llama-server`, status HTTP, uso de tokens quando informado pelo servidor, validação `bash -n`, SHA-256 do artefato e duração total.
+
+A etapa `search-capabilities` ainda não consulta PostgreSQL. Enquanto essa integração estiver pendente, o log registra explicitamente:
+
+```text
+event=database_stage_not_implemented
+stage=search-capabilities
+database=postgresql
+database_query_executed=false
+capability_catalog=in_development
+```
+
+Acompanhamento em tempo real:
+
+```bash
+sudo journalctl -u ai-bash-gen -f -o short-precise --no-pager
+```
+
 ## Build, instalação e testes de aceitação
 
 O build gera o daemon e o utilitário de smoke test para a mesma arquitetura:
