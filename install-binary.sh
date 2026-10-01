@@ -331,7 +331,11 @@ download_selected_model() {
   ensure_debian_package_list "download de modelos GGUF" "${MODEL_DOWNLOAD_PACKAGES[@]}"
   command -v curl >/dev/null 2>&1 || die "curl não encontrado após instalação das dependências de download."
 
-  "${SUDO[@]}" install -d -o root -g root -m 0755 "$model_dir"
+  if mkdir -p -- "$model_dir" 2>/dev/null && [[ -w "$model_dir" ]]; then
+    chmod 0755 "$model_dir" 2>/dev/null || true
+  else
+    "${SUDO[@]}" install -d -o root -g root -m 0755 "$model_dir"
+  fi
 
   info "baixando $MODEL_LABEL ($MODEL_SIZE)"
   info "origem: $MODEL_URL"
