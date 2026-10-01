@@ -1463,6 +1463,7 @@ main() {
   info "caminhos: $BIN_TARGET --show-paths"
   info "dependências: $BIN_TARGET --config $CONFIG_DIR/config.yaml --check-dependencies"
   info "socket esperado: $RUNTIME_DIR/routes/generate.sock"
+  info "logs em tempo real: sudo journalctl -u $APP_NAME -f -o short-precise --no-pager"
   if [[ "${START_SERVICE:-no}" == "yes" ]]; then
     info "serviço e rotas foram validados após a inicialização."
   fi
