@@ -124,6 +124,7 @@ func (s *Server) handle(conn net.Conn) error {
 	ctx := observability.WithRequestID(context.Background(), requestID)
 	logger := observability.Logger(ctx).With("component", "generation-service")
 	stageStarted := make(map[protocol.Stage]time.Time)
+	stageCompleted := make(map[protocol.Stage]bool)
 
 	logger.Info("requisição recebida",
 		"event", "request_received",
@@ -147,6 +148,7 @@ func (s *Server) handle(conn net.Conn) error {
 				"message", message,
 			)
 		case protocol.StateCompleted:
+			stageCompleted[stage] = true
 			durationMS := int64(0)
 			if stageStart, ok := stageStarted[stage]; ok {
 				durationMS = now.Sub(stageStart).Milliseconds()
@@ -200,6 +202,35 @@ func (s *Server) handle(conn net.Conn) error {
 	sendResult := func(result protocol.GenerateResult) error {
 		result.RequestID = requestID
 		result.ElapsedMS = uint64(time.Since(started).Milliseconds())
+
+		expectedStages := []protocol.Stage{
+			protocol.StageRequestNormalizer,
+			protocol.StageSearchCapabilities,
+			protocol.StageBashGenerator,
+			protocol.StageValidation,
+			protocol.StageBashOutput,
+		}
+		missingStages := make([]string, 0)
+		for _, stage := range expectedStages {
+			if !stageCompleted[stage] {
+				missingStages = append(missingStages, stage.String())
+			}
+		}
+		if len(missingStages) == 0 {
+			logger.Info("auditoria de etapas concluída",
+				"event", "pipeline_stage_audit",
+				"all_expected_stages_completed", true,
+				"expected_stage_count", len(expectedStages),
+				"missing_stages", missingStages,
+			)
+		} else {
+			logger.Warn("auditoria detectou etapas ausentes",
+				"event", "pipeline_stage_audit",
+				"all_expected_stages_completed", false,
+				"expected_stage_count", len(expectedStages),
+				"missing_stages", missingStages,
+			)
+		}
 
 		if result.ErrorCode != "" {
 			logger.Error("requisição finalizada com erro",
