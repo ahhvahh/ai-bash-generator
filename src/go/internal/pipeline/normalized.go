@@ -25,7 +25,7 @@ type NormalizedRequest struct {
 	Tasks                []NormalizedTask
 }
 
-const normalizerSystemPrompt = \`You are the request-normalizer of ai-bash-gen.
+const normalizerSystemPrompt = `You are the request-normalizer of ai-bash-gen.
 
 Your job is to convert a user request written in any human language into a structured technical request.
 
@@ -71,7 +71,7 @@ Otherwise:
 
 Return ONLY a valid ai_bash_gen.v1.NormalizedRequest in protobuf text format.
 Do not return Markdown.
-Do not return explanations.\`
+Do not return explanations.`
 
 func userRequestTextProto(text string) string {
 	return "text: " + strconv.Quote(text)
@@ -79,13 +79,13 @@ func userRequestTextProto(text string) string {
 
 func cleanTextProto(content string) string {
 	content = strings.TrimSpace(content)
-	if strings.HasPrefix(content, "\`\`\`") {
+	if strings.HasPrefix(content, "```") {
 		if i := strings.IndexByte(content, '\n'); i >= 0 {
 			content = content[i+1:]
 		}
 		content = strings.TrimSpace(content)
-		if strings.HasSuffix(content, "\`\`\`") {
-			content = strings.TrimSpace(strings.TrimSuffix(content, "\`\`\`"))
+		if strings.HasSuffix(content, "```") {
+			content = strings.TrimSpace(strings.TrimSuffix(content, "```"))
 		}
 	}
 	return content
@@ -216,7 +216,7 @@ func textProtoField(line string) (string, string, bool) {
 }
 
 func passthroughNormalized(text string) NormalizedRequest {
-	raw := fmt.Sprintf(\`intent: "legacy_request"
+	raw := fmt.Sprintf(`intent: "legacy_request"
 canonical_instruction: %s
 input_description: "User-provided request."
 output_description: "Requested Bash behavior."
@@ -232,7 +232,7 @@ tasks {
   }
 }
 final_output_ref: "result"
-status: NORMALIZATION_STATUS_READY\`, strconv.Quote(text), strconv.Quote(text))
+status: NORMALIZATION_STATUS_READY`, strconv.Quote(text), strconv.Quote(text))
 	parsed, _ := parseNormalizedRequest(raw)
 	return parsed
 }
