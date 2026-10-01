@@ -52,7 +52,7 @@ unset AI_BASH_GEN_LLAMA_SERVER
 pass "preflight reutiliza llama-server compatível sem reinstalar"
 
 [[ "$LLAMA_CPP_VERSION" == "v0.5.0" ]] || fail "versão do llama.cpp não está fixada em v0.5.0"
-[[ "$LLAMA_CPP_COMMIT" == "d2e54583c7452353eb35d40431281f6ee984332f" ]] || fail "commit do llama.cpp não corresponde à versão fixada"
+[[ "$LLAMA_CPP_COMMIT" == "7fe450e19305b828c199d602c23a8337aaa1f03b" ]] || fail "commit do llama.cpp não corresponde à versão fixada"
 grep -Fq -- '--target llama-server' "$ROOT/install-binary.sh" || fail "instalador não compila especificamente o target llama-server"
 grep -Fq -- '-DBUILD_SHARED_LIBS=OFF' "$ROOT/install-binary.sh" || fail "build do llama.cpp não está configurado como estático"
 pass "instalação automática do llama.cpp está fixada e limitada ao llama-server"
