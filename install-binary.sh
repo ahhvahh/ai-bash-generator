@@ -16,7 +16,7 @@ DEFAULT_MODEL_DIR="/var/lib/${APP_NAME}/models"
 
 LLAMA_CPP_REPOSITORY="https://github.com/ggml-org/llama.cpp.git"
 LLAMA_CPP_VERSION="v0.5.0"
-LLAMA_CPP_COMMIT="d2e54583c7452353eb35d40431281f6ee984332f"
+LLAMA_CPP_COMMIT="7fe450e19305b828c199d602c23a8337aaa1f03b"
 
 REQUIRED_DEBIAN_PACKAGES=(bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils findutils)
 LLAMA_CPP_BUILD_PACKAGES=(git cmake build-essential ca-certificates)
