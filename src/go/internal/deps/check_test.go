@@ -15,7 +15,7 @@ func TestValidateAcceptsCompatibleRuntime(t *testing.T) {
 	}
 	dir := t.TempDir()
 	llama := filepath.Join(dir, "llama-server")
-	script := "#!/usr/bin/env bash\nif [[ \"\${1:-}\" == \"--help\" ]]; then echo '  --host HOST bind to UNIX socket when HOST ends with .sock'; exit 0; fi\nif [[ \"\${1:-}\" == \"--version\" ]]; then echo fake; exit 0; fi\nexit 0\n"
+	script := "#!/usr/bin/env bash\nif [[ \"${1:-}\" == \"--help\" ]]; then echo '  --host HOST bind to UNIX socket when HOST ends with .sock'; exit 0; fi\nif [[ \"${1:-}\" == \"--version\" ]]; then echo fake; exit 0; fi\nexit 0\n"
 	if err := os.WriteFile(llama, []byte(script), 0755); err != nil {
 		t.Fatal(err)
 	}
