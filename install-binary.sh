@@ -1000,7 +1000,9 @@ validate_binary() {
   grep -Fxq "state_dir=$DEFAULT_STATE_DIR" <<<"$paths_output" || die "state_dir do binário não corresponde a $DEFAULT_STATE_DIR"
   grep -Fxq "runtime_dir=$DEFAULT_RUNTIME_DIR" <<<"$paths_output" || die "runtime_dir do binário não corresponde a $DEFAULT_RUNTIME_DIR"
   grep -Fxq "routes_dir=$DEFAULT_RUNTIME_DIR/routes" <<<"$paths_output" || die "routes_dir do binário não corresponde ao layout esperado"
-  grep -Fxq "llama_socket=$DEFAULT_RUNTIME_DIR/internal/llama.sock" <<<"$paths_output" || die "llama_socket do binário não corresponde ao layout esperado"
+  grep -Fxq "normalizer_socket=$DEFAULT_RUNTIME_DIR/internal/request-normalizer.sock" <<<"$paths_output" || die "normalizer_socket do binário não corresponde ao layout esperado"
+  grep -Fxq "generator_socket=$DEFAULT_RUNTIME_DIR/internal/bash-generator.sock" <<<"$paths_output" || die "generator_socket do binário não corresponde ao layout esperado"
+  grep -Fxq "llama_socket=$DEFAULT_RUNTIME_DIR/internal/bash-generator.sock" <<<"$paths_output" || die "llama_socket do binário não corresponde ao bash-generator"
   grep -Fxq "generate_socket=$DEFAULT_RUNTIME_DIR/routes/generate.sock" <<<"$paths_output" || die "generate_socket ausente ou incompatível; o binário não contém a entrada de geração esperada"
 
   ok "binário validado."
