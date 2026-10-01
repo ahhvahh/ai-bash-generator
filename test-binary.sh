@@ -234,10 +234,9 @@ else
   TMP_DIR="$(mktemp -d)"
   TMP_BIN="$TMP_DIR/ai-bash-gen"
   TEST_CONFIG="$TMP_DIR/config.yaml"
-  DAEMON_LOG="$TMP_DIR/daemon.log"
-  TEST_RUNTIME="$TMP_DIR/run"
-  GENERATE_SOCKET="$TEST_RUNTIME/routes/generate.sock"
-  printf '%s\n' '# configuração de teste' >"$TEST_CONFIG"
+  BROKEN_CONFIG="$TMP_DIR/broken.yaml"
+  FAKE_LLAMA="$TMP_DIR/llama-server"
+  TEST_MODEL="$TMP_DIR/test.gguf"
 
   if cp -- "$BIN" "$TMP_BIN" && chmod +x "$TMP_BIN" && (cd "$TMP_DIR" && "$TMP_BIN" --version >/dev/null 2>&1 && "$TMP_BIN" --show-paths >/dev/null 2>&1); then
     pass "binário funciona fora da árvore original do projeto"
@@ -251,60 +250,57 @@ else
     fail "--config inexistente deveria retornar exit 1, retornou $RUN_RC"
   fi
 
-  AI_BASH_GEN_RUNTIME_DIR="$TMP_DIR/run" "$BIN" --config "$TEST_CONFIG" >"$DAEMON_LOG" 2>&1 &
-  DAEMON_PID=$!
-  sleep 0.3
+  cat >"$FAKE_LLAMA" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --help)
+    echo '  --host HOST  bind to UNIX socket when HOST ends with .sock'
+    exit 0
+    ;;
+  --version)
+    echo 'fake llama-server'
+    exit 0
+    ;;
+esac
+exit 0
+EOF
+  chmod +x "$FAKE_LLAMA"
+  printf 'GGUF-test\n' >"$TEST_MODEL"
 
-  if kill -0 "$DAEMON_PID" 2>/dev/null; then
-    pass "modo daemon permanece em execução após inicialização"
+  cat >"$TEST_CONFIG" <<EOF
+llama:
+  binary: "$FAKE_LLAMA"
+  model: "$TEST_MODEL"
+  context_size: 512
+  startup_timeout: 1s
+  request_timeout: 1s
+  max_tokens: 64
+  temperature: 0.1
+EOF
 
-    if [[ -S "$GENERATE_SOCKET" ]]; then
-      pass "daemon criou generate.sock"
-      if command -v stat >/dev/null 2>&1; then
-        SOCKET_MODE="$(stat -c '%a' "$GENERATE_SOCKET" 2>/dev/null || true)"
-        [[ "$SOCKET_MODE" == "660" ]] && pass "generate.sock possui modo 0660" || fail "generate.sock deveria ter modo 0660, encontrado $SOCKET_MODE"
-        ROUTES_MODE="$(stat -c '%a' "$TEST_RUNTIME/routes" 2>/dev/null || true)"
-        [[ "$ROUTES_MODE" == "750" ]] && pass "diretório routes possui modo 0750" || fail "diretório routes deveria ter modo 0750, encontrado $ROUTES_MODE"
-      else
-        skip "stat indisponível; permissões do socket não verificadas"
-      fi
-    else
-      fail "daemon não criou o socket esperado: $GENERATE_SOCKET"
-    fi
-    kill -TERM "$DAEMON_PID" 2>/dev/null || true
-
-    stopped=0
-    for _ in $(seq 1 30); do
-      if ! kill -0 "$DAEMON_PID" 2>/dev/null; then
-        stopped=1
-        break
-      fi
-      sleep 0.1
-    done
-
-    if [[ "$stopped" -eq 1 ]]; then
-      wait "$DAEMON_PID"
-      DAEMON_RC=$?
-      if [[ "$DAEMON_RC" -eq 0 ]]; then
-        pass "SIGTERM encerra o daemon graciosamente com exit 0"
-      else
-        fail "daemon encerrou após SIGTERM com exit $DAEMON_RC"
-      fi
-    else
-      fail "daemon não encerrou após SIGTERM"
-      kill -KILL "$DAEMON_PID" 2>/dev/null || true
-      wait "$DAEMON_PID" 2>/dev/null || true
-    fi
-
-    grep -q 'ai-bash-gen iniciado' "$DAEMON_LOG" && pass "daemon registra log de inicialização" || fail "log de inicialização não encontrado"
-    grep -q "generate_socket=$GENERATE_SOCKET" "$DAEMON_LOG" && pass "daemon registra generate_socket" || fail "log não registra generate_socket esperado"
-    grep -q 'sinal de encerramento recebido' "$DAEMON_LOG" && pass "daemon registra SIGTERM" || fail "log de SIGTERM não encontrado"
-    grep -q 'ai-bash-gen encerrado' "$DAEMON_LOG" && pass "daemon registra encerramento" || fail "log de encerramento não encontrado"
+  if run_and_capture 0 "$BIN" --config "$TEST_CONFIG" --check-dependencies; then
+    grep -q '^dependências: OK' <<<"$RUN_STDOUT" && pass "--check-dependencies aprova runtime compatível" || fail "--check-dependencies não confirmou sucesso"
   else
-    wait "$DAEMON_PID" 2>/dev/null
-    DAEMON_RC=$?
-    fail "modo daemon encerrou prematuramente (exit=$DAEMON_RC)"
-    info "log: $(cat "$DAEMON_LOG" 2>/dev/null || true)"
+    fail "--check-dependencies deveria retornar exit 0, retornou $RUN_RC: $RUN_STDERR"
+  fi
+
+  cat >"$BROKEN_CONFIG" <<EOF
+llama:
+  binary: "$TMP_DIR/nao-existe"
+  model: "$TMP_DIR/nao-existe.gguf"
+EOF
+
+  if run_and_capture 1 "$BIN" --config "$BROKEN_CONFIG" --check-dependencies; then
+    grep -qi 'dependências\|configuração' <<<"$RUN_STDERR" && pass "dependências ausentes bloqueiam validação" || fail "erro de dependências não foi explicado"
+  else
+    fail "dependências ausentes deveriam retornar exit 1, retornou $RUN_RC"
+  fi
+
+  TEST_RUNTIME="$TMP_DIR/run"
+  if run_and_capture 1 env AI_BASH_GEN_RUNTIME_DIR="$TEST_RUNTIME" "$BIN" --config "$BROKEN_CONFIG"; then
+    [[ ! -S "$TEST_RUNTIME/routes/generate.sock" ]] && pass "daemon não publica generate.sock quando dependências estão ausentes" || fail "generate.sock foi publicado sem dependências"
+  else
+    fail "daemon com dependências ausentes deveria retornar exit 1, retornou $RUN_RC"
   fi
 
   rm -rf -- "$TMP_DIR"
