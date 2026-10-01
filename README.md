@@ -323,7 +323,7 @@ generate_socket=/run/ai-bash-gen/routes/generate.sock
 Antes da instalação, em Debian/derivados, ele verifica os pacotes necessários ao instalador e aos testes de aceitação:
 
 ```text
-bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils
+bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils findutils
 ```
 
 Se algum estiver ausente, o instalador oferece executar `apt-get update` e `apt-get install`.
