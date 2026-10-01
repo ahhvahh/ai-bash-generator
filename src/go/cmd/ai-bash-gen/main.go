@@ -22,8 +22,7 @@ import (
 )
 
 func main() {
-	level := observability.ConfigureFromEnv()
-	slog.Debug("logging configurado", "component", "observability", "level", level.String())
+	observability.ConfigureFromEnv()
 	os.Exit(run(os.Args[1:]))
 }
 
