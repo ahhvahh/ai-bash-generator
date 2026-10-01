@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	DefaultContextSize    = 2048
+	DefaultContextSize    = 32768
 	DefaultStartupTimeout = 2 * time.Minute
-	DefaultRequestTimeout = 3 * time.Minute
-	DefaultMaxTokens      = 1536
+	DefaultRequestTimeout = 10 * time.Minute
+	DefaultMaxTokens      = 4096
 	DefaultTemperature    = 0.2
 )
 

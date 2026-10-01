@@ -444,12 +444,16 @@ A configuração mínima é:
 llama:
   binary: /usr/local/lib/ai-bash-gen/llama-server
   model: /var/lib/ai-bash-gen/models/model.gguf
-  context_size: 2048
+  context_size: 32768
   startup_timeout: 2m
-  request_timeout: 3m
-  max_tokens: 1536
+  request_timeout: 10m
+  max_tokens: 4096
   temperature: 0.2
 ```
+
+O perfil padrão usa uma janela de **32.768 tokens**. Esse valor foi escolhido para ser compatível também com o GGUF oficial do Qwen2.5-Coder-1.5B, cujo contexto completo é 32.768 tokens, e fica muito abaixo do limite nativo do Qwen3.5-0.8B. Para acompanhar instruções mais extensas, o orçamento de saída padrão sobe para **4.096 tokens** e o timeout de requisição para **10 minutos**, evitando que uma geração complexa em CPU seja encerrada prematuramente.
+
+O instalador trata esses valores como parâmetros gerenciados. Em uma reinstalação, se encontrar a configuração bootstrap antiga com `context_size: 2048`, `request_timeout: 3m` e/ou `max_tokens: 1536`, oferece migrá-los para os novos padrões e cria backup do `config.yaml`. Em `--force`, essa migração é aplicada automaticamente. Configurações personalizadas sem o marcador bootstrap são preservadas.
 
 A validação pode ser executada sem iniciar o daemon:
 
