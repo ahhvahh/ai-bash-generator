@@ -26,27 +26,27 @@ jobs:
         run: AI_BASH_GEN_TEST_PRIVILEGED=1 bash test-installer.sh
       - name: Build and acceptance tests
         run: ./build.sh amd64
-      - name: Verify current generation endpoint state
+      - name: Verify dependency gate
         shell: bash
         run: |
           set -Eeuo pipefail
           tmp="$(mktemp -d)"
-          trap 'kill "${pid:-}" 2>/dev/null || true; rm -rf "$tmp"' EXIT
-          printf '%s\n' '# CI config' > "$tmp/config.yaml"
-          AI_BASH_GEN_RUNTIME_DIR="$tmp/run" bin/amd64/ai-bash-gen --config "$tmp/config.yaml" >"$tmp/daemon.log" 2>&1 &
-          pid=$!
-          for _ in $(seq 1 50); do
-            [[ -S "$tmp/run/routes/generate.sock" ]] && break
-            sleep 0.1
-          done
-          test -S "$tmp/run/routes/generate.sock"
+          trap 'rm -rf "$tmp"' EXIT
+          cat >"$tmp/config.yaml" <<EOF
+          llama:
+            binary: "$tmp/missing-llama-server"
+            model: "$tmp/missing-model.gguf"
+          EOF
+
           set +e
-          bin/amd64/ai-bash-gen-generation-test --socket "$tmp/run/routes/generate.sock" --case 01-echo >"$tmp/smoke.out" 2>"$tmp/smoke.err"
-          rc=$?
+          bin/amd64/ai-bash-gen --config "$tmp/config.yaml" --check-dependencies >"$tmp/check.out" 2>"$tmp/check.err"
+          check_rc=$?
+          AI_BASH_GEN_RUNTIME_DIR="$tmp/run" bin/amd64/ai-bash-gen --config "$tmp/config.yaml" >"$tmp/daemon.out" 2>"$tmp/daemon.err"
+          daemon_rc=$?
           set -e
-          cat "$tmp/smoke.out"
-          cat "$tmp/smoke.err"
-          test "$rc" -eq 3
-          grep -q 'PIPELINE_NOT_IMPLEMENTED\|pipeline real ainda não implementado' "$tmp/smoke.err"
-          kill -TERM "$pid"
-          wait "$pid"
+
+          cat "$tmp/check.out" "$tmp/check.err" "$tmp/daemon.out" "$tmp/daemon.err"
+          test "$check_rc" -eq 1
+          test "$daemon_rc" -eq 1
+          test ! -S "$tmp/run/routes/generate.sock"
+          grep -qi 'dependências\|llama-server\|modelo GGUF' "$tmp/check.err"
