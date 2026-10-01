@@ -14,20 +14,31 @@ DEFAULT_UNIT_PATH="/etc/systemd/system/${APP_NAME}.service"
 DEFAULT_LLAMA_TARGET="/usr/local/lib/${APP_NAME}/llama-server"
 DEFAULT_MODEL_DIR="/var/lib/${APP_NAME}/models"
 DEFAULT_CONTEXT_SIZE=32768
+DEFAULT_NORMALIZER_CONTEXT_SIZE=8192
 DEFAULT_STARTUP_TIMEOUT="2m"
 DEFAULT_REQUEST_TIMEOUT="10m"
+DEFAULT_NORMALIZER_REQUEST_TIMEOUT="2m"
 DEFAULT_MAX_TOKENS=4096
+DEFAULT_NORMALIZER_MAX_TOKENS=1600
 DEFAULT_TEMPERATURE="0.2"
+DEFAULT_NORMALIZER_TEMPERATURE="0.1"
+
+DEFAULT_POSTGRES_HOST="/var/run/postgresql"
+DEFAULT_POSTGRES_PORT=5432
+DEFAULT_POSTGRES_DATABASE="ai-bash-gen"
+DEFAULT_POSTGRES_SEARCH_LIMIT=5
 
 LLAMA_CPP_REPOSITORY="https://github.com/ggml-org/llama.cpp.git"
 LLAMA_CPP_VERSION="v0.5.0"
 LLAMA_CPP_COMMIT="7fe450e19305b828c199d602c23a8337aaa1f03b"
 
 DEFAULT_MODEL_KEY="qwen35-08b-q4"
+DEFAULT_GENERATOR_MODEL_KEY="qwen25-coder-15b-q4"
 FORCE_MODE=0
 BIN_ARG=""
 
 REQUIRED_DEBIAN_PACKAGES=(bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils findutils)
+POSTGRES_PACKAGES=(postgresql postgresql-client)
 LLAMA_CPP_BUILD_PACKAGES=(git cmake build-essential ca-certificates)
 MODEL_DOWNLOAD_PACKAGES=(curl ca-certificates)
 
@@ -77,11 +88,12 @@ Características:
   - cria usuário/grupo de serviço dedicados somente se solicitado;
   - só cria serviço systemd se o binário suportar --config;
   - verifica dependências Debian e oferece instalar pacotes ausentes;
+  - instala/configura PostgreSQL local e o Capability Catalog de forma idempotente;
   - detecta o llama-server; se estiver ausente, oferece compilar e instalar llama.cpp automaticamente;
   - usa a versão fixa v0.5.0 do llama.cpp para uma instalação reproduzível;
   - oferece um catálogo de modelos GGUF adequados a máquinas com poucos recursos;
   - baixa e verifica SHA-256 do modelo selecionado quando nenhum modelo local existe;
-  - usa Qwen3.5-0.8B Q4_0 como padrão para o perfil de laptop com ~8 GB de RAM;
+  - usa Qwen3.5-0.8B Q4_0 para request-normalizer e Qwen2.5-Coder-1.5B Q4_K_M para bash-generator por padrão;
   - exige um llama-server compatível com Unix Socket e um modelo GGUF;
   - instala cópias controladas do llama-server e do modelo para o serviço;
   - valida as dependências novamente pelo próprio binário Go antes de iniciar;
