@@ -30,12 +30,12 @@ type SearchRequest struct {
 }
 
 type Candidate struct {
-	ID                string \`json:"id"\`
-	Type              string \`json:"type"\`
-	Description       string \`json:"description"\`
-	MatchInstruction  string \`json:"match_instruction"\`
-	InputDescription  string \`json:"input_description"\`
-	OutputDescription string \`json:"output_description"\`
+	ID                string `json:"id"`
+	Type              string `json:"type"`
+	Description       string `json:"description"`
+	MatchInstruction  string `json:"match_instruction"`
+	InputDescription  string `json:"input_description"`
+	OutputDescription string `json:"output_description"`
 }
 
 type TaskCandidates struct {
@@ -134,7 +134,7 @@ func (c *Client) searchOne(ctx context.Context, intent, query string) ([]Candida
 		return nil, nil
 	}
 
-	sql := \`
+	sql := `
 SELECT json_build_object(
   'id', c.id,
   'type', c.type,
@@ -159,7 +159,7 @@ ORDER BY
   CASE WHEN :'intent' <> '' AND lower(c.intent) = lower(:'intent') THEN 1 ELSE 0 END DESC,
   ts_rank_cd(c.search_document, websearch_to_tsquery('english', :'query')) DESC,
   c.id
-LIMIT \` + strconv.Itoa(c.cfg.SearchLimit) + ";"
+LIMIT ` + strconv.Itoa(c.cfg.SearchLimit) + ";"
 
 	args := c.psqlArgs()
 	args = append(args,
