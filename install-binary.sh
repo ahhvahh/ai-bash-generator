@@ -1036,6 +1036,8 @@ Type=simple
 User=$user
 Group=$group
 Environment=AI_BASH_GEN_RUNTIME_DIR=$runtime_dir
+Environment=AI_BASH_GEN_LOG_LEVEL=debug
+Environment=AI_BASH_GEN_LLAMA_LOG_VERBOSITY=5
 ExecStart=$bin_target --config $config_dir/config.yaml
 Restart=on-failure
 RestartSec=2s
