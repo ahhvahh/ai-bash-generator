@@ -138,6 +138,38 @@ validate_model_source "$fake_model" || fail "modelo GGUF válido foi recusado"
 pass "detecta modelo GGUF válido"
 
 saved_model_packages=("${MODEL_DOWNLOAD_PACKAGES[@]}")
+saved_path="$PATH"
+fake_bin="$tmp/fake-bin"
+mkdir -p "$fake_bin"
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+output=""
+url=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output)
+      output="$2"
+      shift 2
+      ;;
+    --fail|--location)
+      shift
+      ;;
+    --retry|--retry-delay|--continue-at)
+      shift 2
+      ;;
+    *)
+      url="$1"
+      shift
+      ;;
+  esac
+done
+[[ -n "$output" && "$url" == file://* ]] || exit 2
+cp -- "${url#file://}" "$output"
+EOF
+chmod +x "$fake_bin/curl"
+PATH="$fake_bin:$PATH"
+
 MODEL_DOWNLOAD_PACKAGES=()
 MODEL_KEY="fake-model"
 MODEL_LABEL="Fake GGUF"
@@ -152,7 +184,8 @@ download_selected_model "$fake_state"
 cmp -s "$fake_model" "$MODEL_SOURCE" || fail "modelo baixado não corresponde à origem"
 [[ -f "$fake_state/models/model.info" ]] || fail "metadata model.info não foi criada"
 MODEL_DOWNLOAD_PACKAGES=("${saved_model_packages[@]}")
-pass "download de modelo verifica e instala arquivo GGUF em caminho estável"
+PATH="$saved_path"
+pass "download de modelo verifica e instala arquivo GGUF em caminho estável sem exigir curl no host de build"
 
 if validate_model_source "$tmp/model.bin" >/dev/null 2>&1; then
   fail "modelo sem extensão GGUF foi aceito"
