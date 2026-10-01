@@ -851,7 +851,7 @@ start_or_restart_service() {
     fi
   fi
 
-  validate_published_routes "$bin" "$runtime_dir" "$expected_group" 10
+  validate_published_routes "$bin" "$runtime_dir" "$expected_group" 180
   ok "serviço ativo e rotas públicas disponíveis."
 }
 print_summary() {
