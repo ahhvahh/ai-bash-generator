@@ -635,7 +635,11 @@ install_runtime_assets() {
 
   model_dir="$(dirname -- "$model_target")"
   "${SUDO[@]}" install -d -o root -g root -m 0755 "$(dirname -- "$llama_target")"
-  "${SUDO[@]}" install -o root -g root -m 0755 "$llama_source" "$llama_target"
+  if [[ "$(readlink -f -- "$llama_source")" != "$(readlink -m -- "$llama_target")" ]]; then
+    "${SUDO[@]}" install -o root -g root -m 0755 "$llama_source" "$llama_target"
+  else
+    info "llama-server já está no destino controlado: $llama_target"
+  fi
 
   if [[ "$use_service_user" == "yes" ]]; then
     "${SUDO[@]}" install -d -o "$owner_user" -g "$owner_group" -m 0750 "$model_dir"
