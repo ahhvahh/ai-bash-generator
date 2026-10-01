@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -79,7 +80,16 @@ func validateModel(path string) error {
 	if err != nil {
 		return fmt.Errorf("arquivo não pode ser lido: %w", err)
 	}
-	return f.Close()
+	defer f.Close()
+
+	var magic [4]byte
+	if _, err := io.ReadFull(f, magic[:]); err != nil {
+		return fmt.Errorf("arquivo GGUF truncado: %w", err)
+	}
+	if string(magic[:]) != "GGUF" {
+		return fmt.Errorf("assinatura GGUF inválida: %q", string(magic[:]))
+	}
+	return nil
 }
 
 func validateLlamaServer(path string) error {
