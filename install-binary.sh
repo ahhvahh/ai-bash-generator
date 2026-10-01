@@ -345,7 +345,12 @@ download_selected_model() {
   local model_dir="$state_dir/models"
   local target="$model_dir/$target_name"
   local partial="$model_dir/.${target_name}.part"
+  local metadata="$model_dir/model.info"
   local actual_sha
+
+  if [[ "$target_name" != "model.gguf" ]]; then
+    metadata="$model_dir/${target_name}.info"
+  fi
 
   ensure_debian_package_list "download de modelos GGUF" "${MODEL_DOWNLOAD_PACKAGES[@]}"
   command -v curl >/dev/null 2>&1 || die "curl não encontrado após instalação das dependências de download."
@@ -378,8 +383,8 @@ download_selected_model() {
     printf 'label=%s\n' "$MODEL_LABEL"
     printf 'source=%s\n' "$MODEL_URL"
     printf 'sha256=%s\n' "$MODEL_SHA256"
-  } | "${SUDO[@]}" tee "$model_dir/${target_name}.info" >/dev/null
-  "${SUDO[@]}" chmod 0644 "$model_dir/${target_name}.info"
+  } | "${SUDO[@]}" tee "$metadata" >/dev/null
+  "${SUDO[@]}" chmod 0644 "$metadata"
 
   MODEL_SOURCE="$target"
   MODEL_INSTALLATION_MODE="downloaded"
