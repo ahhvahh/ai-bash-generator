@@ -98,9 +98,17 @@ LLAMA_CPP_BUILD_PACKAGES=()
 SUDO=()
 
 fake_installed_llama="$tmp/installed/llama-server"
-install_llama_cpp_from_source "$fake_installed_llama"
-validate_llama_source "$fake_installed_llama" || fail "instalação automática não produziu llama-server válido"
-pass "fluxo de instalação automática compila e instala o target llama-server"
+if [[ "${AI_BASH_GEN_TEST_PRIVILEGED:-0}" == "1" ]]; then
+  command -v sudo >/dev/null 2>&1 || fail "sudo ausente para exercitar instalação automática"
+  sudo -n true || fail "sudo sem senha é necessário para exercitar instalação automática"
+  SUDO=(sudo)
+  install_llama_cpp_from_source "$fake_installed_llama"
+  validate_llama_source "$fake_installed_llama" || fail "instalação automática não produziu llama-server válido"
+  pass "fluxo de instalação automática compila e instala o target llama-server"
+else
+  pass "fluxo de instalação automática será exercitado no teste privilegiado"
+fi
+SUDO=()
 
 LLAMA_CPP_REPOSITORY="$saved_llama_repo"
 LLAMA_CPP_VERSION="$saved_llama_version"
