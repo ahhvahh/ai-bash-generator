@@ -290,7 +290,7 @@ O contrato está em `proto/ai_bash_gen/v1/generation_service.proto`. Uma conexã
 
 O cliente oficial está no repositório `ai-bash-generator-client`. O cliente é responsável por gravar o artefato no filesystem do usuário; o daemon retorna somente `filename`, conteúdo e SHA-256.
 
-Estado atual: o transporte Unix Socket, o streaming de progresso e um pipeline mínimo funcional estão implementados. O daemon valida as dependências antes de publicar `generate.sock`, inicia o `llama-server` em `/run/ai-bash-gen/internal/llama.sock`, aguarda `/health` ficar pronto, gera o Bash via `/v1/chat/completions`, valida a sintaxe com `bash -n` e retorna o artefato ao cliente.
+Estado atual: o transporte Unix Socket, o streaming de progresso e um pipeline mínimo funcional estão implementados. O daemon valida as dependências antes de publicar `generate.sock`, inicia o `llama-server` em `/run/ai-bash-gen/internal/llama.sock`, aguarda `/health` ficar pronto, gera o Bash via `/v1/chat/completions`, valida a sintaxe com `bash -n` e retorna o artefato ao cliente. Se a primeira geração falhar no `bash -n`, o pipeline envia o erro de validação de volta ao LLM e solicita uma nova geração do zero; são permitidas até 2 tentativas dentro do timeout da requisição.
 
 O estágio `search_capabilities` ainda opera em modo mínimo, sem catálogo MCP/PostgreSQL; a integração completa do catálogo continua sendo uma evolução separada.
 
@@ -305,7 +305,7 @@ AI_BASH_GEN_LOG_LEVEL=debug
 AI_BASH_GEN_LLAMA_LOG_VERBOSITY=5
 ```
 
-Cada requisição recebe um `request_id`. O journal registra recebimento, início/fim de cada etapa, duração em milissegundos, chamada HTTP ao `llama-server`, status HTTP, uso de tokens quando informado pelo servidor, validação `bash -n`, SHA-256 do artefato e duração total.
+Cada requisição recebe um `request_id`. O journal registra recebimento, início/fim de cada etapa, duração em milissegundos, chamada HTTP ao `llama-server`, status HTTP, uso de tokens quando informado pelo servidor, `finish_reason`, detecção de limite de tokens, validação `bash -n`, tentativas de regeneração, SHA-256 do artefato e duração total. Os eventos `generation_validation_failed` e `generation_retry_requested` deixam explícito quando uma saída inválida foi devolvida ao LLM para correção.
 
 A etapa `search-capabilities` ainda não consulta PostgreSQL. Enquanto essa integração estiver pendente, o log registra explicitamente:
 
@@ -358,7 +358,7 @@ Se algum estiver ausente, o instalador oferece executar `apt-get update` e `apt-
 
 Antes de continuar a configuração do serviço, o instalador procura um `llama-server` compatível. Se não encontrar, ele oferece instalar automaticamente o componente usado pelo projeto: `llama.cpp v0.5.0`, fixado no commit `7fe450e19305b828c199d602c23a8337aaa1f03b`. A instalação automática adiciona, quando necessário, `git`, `cmake`, `build-essential` e `ca-certificates`, baixa o código-fonte oficial, compila somente o target `llama-server` em modo Release/CPU e com bibliotecas internas estáticas, e instala o resultado em `/usr/local/lib/ai-bash-gen/llama-server`.
 
-O `llama-server` não recebe uma unit systemd independente: seu processo é iniciado, monitorado e encerrado pelo próprio `ai-bash-gen`, que o mantém restrito ao Unix Domain Socket privado `/run/ai-bash-gen/internal/llama.sock`.
+O `llama-server` não recebe uma unit systemd independente: seu processo é iniciado, monitorado e encerrado pelo próprio `ai-bash-gen`, que o mantém restrito ao Unix Domain Socket privado `/run/ai-bash-gen/internal/llama.sock`. Para o caso de uso de geração de Bash, o runtime é iniciado com `--reasoning off`; isso evita consumir grande parte do orçamento de tokens com raciocínio interno antes do código e reduz o risco de a resposta ser cortada por `max_tokens`.
 
 Se nenhum GGUF local for encontrado, o instalador mostra o hardware detectado e oferece um catálogo curado de modelos executáveis em máquinas com poucos recursos. O padrão é `Qwen3.5-0.8B Q4_0` (~563 MB), por ser atual e adequado ao perfil de laptop com cerca de 8 GB de RAM e CPU de poucos núcleos. Também estão disponíveis `Qwen3.5-0.8B Q8_0`, `Qwen2.5-Coder-1.5B-Instruct Q4_K_M` e `Qwen3.5-4B Q4_K_M`. Os downloads são feitos por HTTPS, gravados em `/var/lib/ai-bash-gen/models/model.gguf` e só são aceitos depois da validação SHA-256 e da assinatura `GGUF`.
 
