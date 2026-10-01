@@ -25,6 +25,10 @@ enum ProgressState {
 message GenerateRequest {
   string text = 1;
   string requested_filename = 2;
+
+  // Optional. When set, the pipeline runs all prerequisites up to this stage
+  // and returns that stage output through the same generate.sock route.
+  ProcessingStage target_stage = 3;
 }
 
 message ProgressEvent {
