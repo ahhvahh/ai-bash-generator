@@ -332,6 +332,18 @@ Antes de continuar a configuração do serviço, o instalador procura um `llama-
 
 O `llama-server` não recebe uma unit systemd independente: seu processo é iniciado, monitorado e encerrado pelo próprio `ai-bash-gen`, que o mantém restrito ao Unix Domain Socket privado `/run/ai-bash-gen/internal/llama.sock`.
 
+Se nenhum GGUF local for encontrado, o instalador mostra o hardware detectado e oferece um catálogo curado de modelos executáveis em máquinas com poucos recursos. O padrão é `Qwen3.5-0.8B Q4_0` (~563 MB), por ser atual e adequado ao perfil de laptop com cerca de 8 GB de RAM e CPU de poucos núcleos. Também estão disponíveis `Qwen3.5-0.8B Q8_0`, `Qwen2.5-Coder-1.5B-Instruct Q4_K_M` e `Qwen3.5-4B Q4_K_M`. Os downloads são feitos por HTTPS, gravados em `/var/lib/ai-bash-gen/models/model.gguf` e só são aceitos depois da validação SHA-256 e da assinatura `GGUF`.
+
+A instalação totalmente automática usa:
+
+```bash
+./install-binary.sh --force
+# ou
+./install-binary.sh ./bin/amd64/ai-bash-gen --force
+```
+
+Com `--force`, o instalador não solicita confirmações e aplica os valores padrão: instala dependências ausentes, instala/reutiliza `llama.cpp`, baixa o modelo padrão quando necessário, cria a conta de serviço, instala a unit systemd, habilita no boot e inicia/reinicia o serviço. Configurações funcionais já existentes são preservadas.
+
 O instalador também permite informar um usuário cliente. Esse usuário é incluído no grupo do serviço para conseguir atravessar `/run/ai-bash-gen/routes` e abrir sockets com modo `0660`. A nova associação de grupo requer uma nova sessão do usuário.
 
 Ao instalar a unit systemd, o instalador pergunta se deve iniciar/reiniciar o serviço e se deve habilitá-lo no boot. Quando a inicialização é solicitada, ele aguarda até 180 segundos para permitir o carregamento inicial do modelo, confirma que o serviço permaneceu ativo e valida todos os sockets públicos declarados por `--show-paths` dentro de `/run/ai-bash-gen/routes/`, incluindo existência, modo `0660` e grupo do serviço. Se alguma rota não aparecer, a instalação falha e imprime `systemctl status` e as últimas mensagens do `journalctl`.

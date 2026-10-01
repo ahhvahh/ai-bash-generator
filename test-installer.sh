@@ -22,6 +22,22 @@ if validate_absolute_path "teste" "./ai-bash-gen" >/dev/null 2>&1; then
 fi
 pass "recusa caminhos relativos"
 
+FORCE_MODE=1
+[[ "$(ask_value 'teste force' 'valor-padrao')" == "valor-padrao" ]] || fail "--force não aplicou valor padrão"
+ask_yes_no "teste force yes" "Y" || fail "--force deveria aceitar resposta padrão Y"
+if ask_yes_no "teste force no" "N"; then
+  fail "--force deveria preservar resposta padrão N"
+fi
+confirm_value "teste force" "ok"
+FORCE_MODE=0
+pass "--force aplica padrões sem leitura interativa"
+
+model_catalog_resolve "$DEFAULT_MODEL_KEY" || fail "modelo padrão não existe no catálogo"
+[[ "$MODEL_KEY" == "qwen35-08b-q4" ]] || fail "modelo padrão inesperado: $MODEL_KEY"
+[[ "$MODEL_SHA256" == "57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf" ]] || fail "SHA do modelo padrão inesperado"
+[[ "$MODEL_URL" == https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF/* ]] || fail "modelo padrão não usa repositório ggml-org esperado"
+pass "catálogo define Qwen3.5-0.8B Q4_0 como padrão"
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
@@ -120,6 +136,23 @@ fake_model="$tmp/model.gguf"
 printf 'GGUF-test\n' >"$fake_model"
 validate_model_source "$fake_model" || fail "modelo GGUF válido foi recusado"
 pass "detecta modelo GGUF válido"
+
+saved_model_packages=("${MODEL_DOWNLOAD_PACKAGES[@]}")
+MODEL_DOWNLOAD_PACKAGES=()
+MODEL_KEY="fake-model"
+MODEL_LABEL="Fake GGUF"
+MODEL_FILE="fake.gguf"
+MODEL_SIZE="9 bytes"
+MODEL_URL="file://$fake_model"
+MODEL_SHA256="$(sha256sum "$fake_model" | awk '{print $1}')"
+SUDO=()
+fake_state="$tmp/model-state"
+download_selected_model "$fake_state"
+[[ "$MODEL_SOURCE" == "$fake_state/models/model.gguf" ]] || fail "download não usou caminho estável model.gguf"
+cmp -s "$fake_model" "$MODEL_SOURCE" || fail "modelo baixado não corresponde à origem"
+[[ -f "$fake_state/models/model.info" ]] || fail "metadata model.info não foi criada"
+MODEL_DOWNLOAD_PACKAGES=("${saved_model_packages[@]}")
+pass "download de modelo verifica e instala arquivo GGUF em caminho estável"
 
 if validate_model_source "$tmp/model.bin" >/dev/null 2>&1; then
   fail "modelo sem extensão GGUF foi aceito"

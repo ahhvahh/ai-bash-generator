@@ -18,8 +18,13 @@ LLAMA_CPP_REPOSITORY="https://github.com/ggml-org/llama.cpp.git"
 LLAMA_CPP_VERSION="v0.5.0"
 LLAMA_CPP_COMMIT="7fe450e19305b828c199d602c23a8337aaa1f03b"
 
+DEFAULT_MODEL_KEY="qwen35-08b-q4"
+FORCE_MODE=0
+BIN_ARG=""
+
 REQUIRED_DEBIAN_PACKAGES=(bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils findutils)
 LLAMA_CPP_BUILD_PACKAGES=(git cmake build-essential ca-certificates)
+MODEL_DOWNLOAD_PACKAGES=(curl ca-certificates)
 
 C_RESET=""
 C_RED=""
@@ -49,10 +54,16 @@ Instalador interativo do ai-bash-gen para Debian/Linux Desktop.
 Uso:
   ./install-binary.sh
   ./install-binary.sh /caminho/para/ai-bash-gen
+  ./install-binary.sh --force
+  ./install-binary.sh /caminho/para/ai-bash-gen --force
   ./install-binary.sh --help
 
+Opções:
+  --force   aplica todas as opções padrão sem perguntas. Instala dependências,
+            llama.cpp, modelo padrão, systemd e inicia/habilita o serviço.
+
 Características:
-  - exige terminal interativo;
+  - exige terminal interativo, exceto com --force;
   - confirma cada parâmetro antes da instalação;
   - valida o binário usando --version e --show-paths, incluindo generate_socket;
   - instala o executável em /usr/local/bin por padrão;
@@ -62,6 +73,9 @@ Características:
   - verifica dependências Debian e oferece instalar pacotes ausentes;
   - detecta o llama-server; se estiver ausente, oferece compilar e instalar llama.cpp automaticamente;
   - usa a versão fixa v0.5.0 do llama.cpp para uma instalação reproduzível;
+  - oferece um catálogo de modelos GGUF adequados a máquinas com poucos recursos;
+  - baixa e verifica SHA-256 do modelo selecionado quando nenhum modelo local existe;
+  - usa Qwen3.5-0.8B Q4_0 como padrão para o perfil de laptop com ~8 GB de RAM;
   - exige um llama-server compatível com Unix Socket e um modelo GGUF;
   - instala cópias controladas do llama-server e do modelo para o serviço;
   - valida as dependências novamente pelo próprio binário Go antes de iniciar;
@@ -79,6 +93,13 @@ ask_yes_no() {
   local prompt="$1"
   local default="${2:-N}"
   local answer suffix
+
+  if [[ "${FORCE_MODE:-0}" == "1" ]]; then
+    case "$default" in
+      Y|y) return 0 ;;
+      *) return 1 ;;
+    esac
+  fi
 
   case "$default" in
     Y|y) suffix='[S/n]' ;;
@@ -100,6 +121,12 @@ ask_value() {
   local prompt="$1"
   local default="$2"
   local value
+
+  if [[ "${FORCE_MODE:-0}" == "1" ]]; then
+    printf '%s' "$default"
+    return 0
+  fi
+
   read -r -p "$prompt [$default]: " value
   printf '%s' "${value:-$default}"
 }
@@ -200,12 +227,14 @@ detect_model_default() {
 }
 
 validate_model_source() {
-  local path="$1"
+  local path="$1" magic
   validate_absolute_path "modelo GGUF" "$path" || return 1
   [[ "$path" == *.gguf || "$path" == *.GGUF ]] || { warn "o modelo deve possuir extensão .gguf: $path"; return 1; }
   [[ -f "$path" ]] || { warn "modelo GGUF não encontrado: $path"; return 1; }
   [[ -s "$path" ]] || { warn "modelo GGUF está vazio: $path"; return 1; }
   [[ -r "$path" ]] || { warn "modelo GGUF não pode ser lido: $path"; return 1; }
+  magic="$(LC_ALL=C head -c 4 -- "$path" 2>/dev/null || true)"
+  [[ "$magic" == "GGUF" ]] || { warn "arquivo não possui assinatura GGUF válida: $path"; return 1; }
   return 0
 }
 
@@ -220,9 +249,176 @@ ask_model_source() {
   done
 }
 
+model_catalog_resolve() {
+  local key="$1"
+  case "$key" in
+    qwen35-08b-q4)
+      MODEL_KEY="$key"
+      MODEL_LABEL="Qwen3.5-0.8B Q4_0"
+      MODEL_FILE="Qwen3.5-0.8B-Q4_0.gguf"
+      MODEL_SIZE="563 MB"
+      MODEL_URL="https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_0.gguf"
+      MODEL_SHA256="57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf"
+      MODEL_NOTE="padrão: atual, leve e adequado para CPU com ~8 GB RAM"
+      ;;
+    qwen35-08b-q8)
+      MODEL_KEY="$key"
+      MODEL_LABEL="Qwen3.5-0.8B Q8_0"
+      MODEL_FILE="Qwen3.5-0.8B-Q8_0.gguf"
+      MODEL_SIZE="834 MB"
+      MODEL_URL="https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q8_0.gguf"
+      MODEL_SHA256="37ae482d336108d23516fa35e8e0c4126688d81018b87178a18d752a1357814f"
+      MODEL_NOTE="mesmo modelo com quantização maior; mais memória e I/O"
+      ;;
+    qwen25-coder-15b-q4)
+      MODEL_KEY="$key"
+      MODEL_LABEL="Qwen2.5-Coder-1.5B-Instruct Q4_K_M"
+      MODEL_FILE="qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"
+      MODEL_SIZE="1.12 GB"
+      MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/38f6bab61d341b23a6c00226f32c0d6148bf9f43/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"
+      MODEL_SHA256="cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046"
+      MODEL_NOTE="especializado em código; mais antigo, porém alinhado ao objetivo do projeto"
+      ;;
+    qwen35-4b-q4)
+      MODEL_KEY="$key"
+      MODEL_LABEL="Qwen3.5-4B Q4_K_M"
+      MODEL_FILE="Qwen_Qwen3.5-4B-Q4_K_M.gguf"
+      MODEL_SIZE="2.87 GB"
+      MODEL_URL="https://huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF/resolve/158c77ecbedcdc9cf2011783a420757be1e45c15/Qwen_Qwen3.5-4B-Q4_K_M.gguf"
+      MODEL_SHA256="2c08bf55fdde0b2e4bd52fa7dc6d49150e83eac997910cf014b7221c172a4b20"
+      MODEL_NOTE="mais capaz, mas significativamente mais lento em CPU de laptop"
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+print_hardware_profile() {
+  local cpu threads mem_kb mem_gb
+  cpu="$(awk -F: '/model name/ {sub(/^[ \t]+/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || true)"
+  threads="$(nproc 2>/dev/null || printf '?')"
+  mem_kb="$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null || true)"
+  mem_gb="?"
+  if [[ "$mem_kb" =~ ^[0-9]+$ ]]; then
+    mem_gb="$(( (mem_kb + 524288) / 1048576 ))"
+  fi
+  info "hardware detectado: CPU=${cpu:-não confirmada}; threads=$threads; RAM≈${mem_gb} GB"
+}
+
+print_model_catalog() {
+  local key
+  echo
+  printf '%sModelos GGUF disponíveis%s\n' "$C_BOLD" "$C_RESET"
+  print_hardware_profile
+  for key in qwen35-08b-q4 qwen35-08b-q8 qwen25-coder-15b-q4 qwen35-4b-q4; do
+    model_catalog_resolve "$key"
+    case "$key" in
+      qwen35-08b-q4) printf '  1) %s — %s — %s [PADRÃO]\n' "$MODEL_LABEL" "$MODEL_SIZE" "$MODEL_NOTE" ;;
+      qwen35-08b-q8) printf '  2) %s — %s — %s\n' "$MODEL_LABEL" "$MODEL_SIZE" "$MODEL_NOTE" ;;
+      qwen25-coder-15b-q4) printf '  3) %s — %s — %s\n' "$MODEL_LABEL" "$MODEL_SIZE" "$MODEL_NOTE" ;;
+      qwen35-4b-q4) printf '  4) %s — %s — %s\n' "$MODEL_LABEL" "$MODEL_SIZE" "$MODEL_NOTE" ;;
+    esac
+  done
+  echo "  5) Informar caminho de um modelo GGUF já existente"
+}
+
+download_selected_model() {
+  local state_dir="$1"
+  local model_dir="$state_dir/models"
+  local target="$model_dir/model.gguf"
+  local partial="$model_dir/.model.gguf.part"
+  local actual_sha
+
+  ensure_debian_package_list "download de modelos GGUF" "${MODEL_DOWNLOAD_PACKAGES[@]}"
+  command -v curl >/dev/null 2>&1 || die "curl não encontrado após instalação das dependências de download."
+
+  if mkdir -p -- "$model_dir" 2>/dev/null && [[ -w "$model_dir" ]]; then
+    chmod 0755 "$model_dir" 2>/dev/null || true
+  else
+    "${SUDO[@]}" install -d -o root -g root -m 0755 "$model_dir"
+  fi
+
+  info "baixando $MODEL_LABEL ($MODEL_SIZE)"
+  info "origem: $MODEL_URL"
+  info "destino: $target"
+  "${SUDO[@]}" curl --fail --location --retry 3 --retry-delay 2 --continue-at - \
+    --output "$partial" "$MODEL_URL" || die "falha ao baixar o modelo $MODEL_LABEL."
+
+  actual_sha="$("${SUDO[@]}" sha256sum "$partial" | awk '{print $1}')"
+  [[ "$actual_sha" == "$MODEL_SHA256" ]] || {
+    "${SUDO[@]}" rm -f -- "$partial"
+    die "SHA-256 inválido para $MODEL_LABEL. Esperado=$MODEL_SHA256 obtido=$actual_sha"
+  }
+
+  "${SUDO[@]}" mv -f -- "$partial" "$target"
+  "${SUDO[@]}" chmod 0644 "$target"
+
+  validate_model_source "$target" || die "modelo baixado falhou na validação GGUF: $target"
+
+  {
+    printf 'key=%s\n' "$MODEL_KEY"
+    printf 'label=%s\n' "$MODEL_LABEL"
+    printf 'source=%s\n' "$MODEL_URL"
+    printf 'sha256=%s\n' "$MODEL_SHA256"
+  } | "${SUDO[@]}" tee "$model_dir/model.info" >/dev/null
+  "${SUDO[@]}" chmod 0644 "$model_dir/model.info"
+
+  MODEL_SOURCE="$target"
+  MODEL_INSTALLATION_MODE="downloaded"
+  ok "modelo instalado e verificado: $MODEL_SOURCE"
+}
+
+select_or_download_model() {
+  local state_dir="$1"
+  local detected choice key
+
+  detected="$(detect_model_default)"
+  if validate_model_source "$detected" >/dev/null 2>&1; then
+    if ask_yes_no "Modelo GGUF local encontrado em $detected. Usar este modelo?" "Y"; then
+      MODEL_SOURCE="$detected"
+      MODEL_INSTALLATION_MODE="existing"
+      return 0
+    fi
+  fi
+
+  if [[ "${FORCE_MODE:-0}" == "1" ]]; then
+    model_catalog_resolve "$DEFAULT_MODEL_KEY" || die "modelo padrão inválido: $DEFAULT_MODEL_KEY"
+    download_selected_model "$state_dir"
+    return 0
+  fi
+
+  while true; do
+    print_model_catalog
+    choice="$(ask_value 'Selecione o modelo' '1')"
+    case "$choice" in
+      1) key="qwen35-08b-q4" ;;
+      2) key="qwen35-08b-q8" ;;
+      3) key="qwen25-coder-15b-q4" ;;
+      4) key="qwen35-4b-q4" ;;
+      5)
+        MODEL_SOURCE="$(ask_model_source "$detected")"
+        MODEL_INSTALLATION_MODE="manual"
+        return 0
+        ;;
+      *) warn "opção de modelo inválida: $choice"; continue ;;
+    esac
+
+    model_catalog_resolve "$key" || die "entrada inválida no catálogo de modelos: $key"
+    printf '\nSelecionado: %s (%s)\n%s\n' "$MODEL_LABEL" "$MODEL_SIZE" "$MODEL_NOTE"
+    if ask_yes_no "Baixar este modelo agora?" "Y"; then
+      download_selected_model "$state_dir"
+      return 0
+    fi
+  done
+}
+
 confirm_value() {
   local label="$1"
   local value="$2"
+
+  if [[ "${FORCE_MODE:-0}" == "1" ]]; then
+    info "$label: $value"
+    return 0
+  fi
 
   printf '\n%s%s%s\n' "$C_BOLD" "$label" "$C_RESET"
   printf '  %s\n' "$value"
@@ -230,7 +426,8 @@ confirm_value() {
 }
 
 require_interactive() {
-  [[ -t 0 && -t 1 ]] || die "este instalador exige um terminal interativo."
+  [[ "${FORCE_MODE:-0}" == "1" ]] && return 0
+  [[ -t 0 && -t 1 ]] || die "este instalador exige um terminal interativo; use --force para instalação não interativa."
 }
 
 check_debian_family() {
@@ -1014,6 +1211,7 @@ llama.cpp versão   : $LLAMA_CPP_VERSION
 llama-server modo  : ${LLAMA_INSTALLATION_MODE:-unknown}
 llama-server origem: $LLAMA_SOURCE
 llama-server alvo  : $LLAMA_TARGET
+Modelo GGUF modo   : ${MODEL_INSTALLATION_MODE:-unknown}
 Modelo GGUF origem : $MODEL_SOURCE
 Modelo GGUF alvo   : $MODEL_TARGET
 Usuário de serviço : $SERVICE_USER
@@ -1029,17 +1227,44 @@ Unit systemd       : $UNIT_PATH
 __SUMMARY__
 }
 
-main() {
-  case "${1:-}" in
-    -h|--help|help)
-      usage
-      exit 0
-      ;;
-  esac
+parse_arguments() {
+  FORCE_MODE=0
+  BIN_ARG=""
 
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h|--help|help)
+        usage
+        exit 0
+        ;;
+      --force)
+        FORCE_MODE=1
+        ;;
+      --)
+        shift
+        [[ $# -le 1 ]] || { usage >&2; exit 2; }
+        [[ $# -eq 1 ]] && BIN_ARG="$1"
+        break
+        ;;
+      -*)
+        die "opção desconhecida: $1"
+        ;;
+      *)
+        [[ -z "$BIN_ARG" ]] || die "apenas um caminho de binário pode ser informado."
+        BIN_ARG="$1"
+        ;;
+    esac
+    shift
+  done
+}
+
+main() {
+  parse_arguments "$@"
   require_interactive
 
-  [[ $# -le 1 ]] || { usage >&2; exit 2; }
+  if [[ "$FORCE_MODE" == "1" ]]; then
+    info "modo --force ativo: opções padrão serão aplicadas sem perguntas."
+  fi
 
   check_debian_family
   setup_privilege_command
@@ -1047,11 +1272,15 @@ main() {
   ensure_llama_server_available
   load_existing_unit_defaults
 
-  DEFAULT_BIN_SOURCE="${1:-$(detect_binary_default)}"
+  DEFAULT_BIN_SOURCE="${BIN_ARG:-$(detect_binary_default)}"
 
   echo
-  printf '%sConfiguração interativa%s\n' "$C_BOLD" "$C_RESET"
-  echo "Cada parâmetro será confirmado individualmente."
+  if [[ "$FORCE_MODE" == "1" ]]; then
+    printf '%sConfiguração automática (--force)%s\n' "$C_BOLD" "$C_RESET"
+  else
+    printf '%sConfiguração interativa%s\n' "$C_BOLD" "$C_RESET"
+    echo "Cada parâmetro será confirmado individualmente."
+  fi
 
   BIN_SOURCE="$(ask_value 'Caminho do binário compilado' "$DEFAULT_BIN_SOURCE")"
   [[ -e "$BIN_SOURCE" ]] || die "arquivo não encontrado: $BIN_SOURCE"
@@ -1077,9 +1306,9 @@ main() {
   LLAMA_TARGET="$(ask_absolute_path 'Destino controlado do llama-server' "$DEFAULT_LLAMA_TARGET" 'Destino do llama-server')"
   confirm_value "Destino do llama-server" "$LLAMA_TARGET"
 
-  MODEL_SOURCE="$(ask_model_source "$(detect_model_default)")"
+  select_or_download_model "$STATE_DIR"
   MODEL_SOURCE="$(absolute_path "$MODEL_SOURCE")"
-  confirm_value "Modelo GGUF detectado" "$MODEL_SOURCE"
+  confirm_value "Modelo GGUF selecionado" "$MODEL_SOURCE"
 
   MODEL_TARGET="$STATE_DIR/models/$(basename -- "$MODEL_SOURCE")"
   confirm_value "Destino controlado do modelo GGUF" "$MODEL_TARGET"
@@ -1166,7 +1395,9 @@ main() {
   fi
 
   print_summary
-  ask_yes_no "Executar a instalação com estes parâmetros?" "N" || die "instalação cancelada."
+  if [[ "$FORCE_MODE" != "1" ]]; then
+    ask_yes_no "Executar a instalação com estes parâmetros?" "N" || die "instalação cancelada."
+  fi
 
   if [[ "$CREATE_SERVICE_ACCOUNT" == "yes" ]]; then
     create_service_account "$SERVICE_USER" "$SERVICE_GROUP" "$STATE_DIR"
