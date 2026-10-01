@@ -128,7 +128,12 @@ func validateArtifact(ctx context.Context, tc testCase, artifact protocol.BashAr
     }
 
     expectedStages := []protocol.Stage{
-        protocol.StageRequestNormalizer, protocol.StageSearchCapabilities, protocol.StageBashGenerator, protocol.StageValidation, protocol.StageBashOutput,
+        protocol.StageRequestNormalizer,
+        protocol.StageNormalizedRequest,
+        protocol.StageSearchCapabilities,
+        protocol.StageBashGenerator,
+        protocol.StageValidation,
+        protocol.StageBashOutput,
     }
     for _, stage := range expectedStages {
         if stages[stage] != protocol.StateCompleted { return fmt.Errorf("etapa %s não terminou com OK", stage.String()) }
