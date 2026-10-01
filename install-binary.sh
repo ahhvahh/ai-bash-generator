@@ -11,6 +11,8 @@ DEFAULT_RUNTIME_DIR="/run/${APP_NAME}"
 DEFAULT_SERVICE_USER="${APP_NAME}"
 DEFAULT_SERVICE_GROUP="${APP_NAME}"
 DEFAULT_UNIT_PATH="/etc/systemd/system/${APP_NAME}.service"
+DEFAULT_LLAMA_TARGET="/usr/local/lib/${APP_NAME}/llama-server"
+DEFAULT_MODEL_DIR="/var/lib/${APP_NAME}/models"
 
 REQUIRED_DEBIAN_PACKAGES=(bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils)
 
@@ -53,6 +55,9 @@ Características:
   - cria usuário/grupo de serviço dedicados somente se solicitado;
   - só cria serviço systemd se o binário suportar --config;
   - verifica dependências Debian e oferece instalar pacotes ausentes;
+  - exige um llama-server compatível com Unix Socket e um modelo GGUF;
+  - instala cópias controladas do llama-server e do modelo para o serviço;
+  - valida as dependências novamente pelo próprio binário Go antes de iniciar;
   - cadastra e confirma o usuário cliente no grupo do serviço;
   - detecta quando a sessão atual ainda não recebeu o novo grupo;
   - valida o acesso do usuário cliente às rotas usando uma sessão nova;
@@ -114,6 +119,87 @@ ask_absolute_path() {
   while true; do
     value="$(ask_value "$prompt" "$default")"
     if validate_absolute_path "$label" "$value"; then
+      printf '%s' "$value"
+      return 0
+    fi
+  done
+}
+
+detect_llama_default() {
+  local candidate
+  if command -v llama-server >/dev/null 2>&1; then
+    command -v llama-server
+    return 0
+  fi
+
+  for candidate in \
+    "${HOME:-}/llama.cpp/build/bin/llama-server" \
+    "/usr/local/bin/llama-server" \
+    "/usr/bin/llama-server"
+  do
+    [[ -n "$candidate" && -x "$candidate" ]] && { printf '%s\n' "$candidate"; return 0; }
+  done
+
+  printf '%s\n' "/usr/local/bin/llama-server"
+}
+
+validate_llama_source() {
+  local path="$1" help
+
+  validate_absolute_path "llama-server" "$path" || return 1
+  [[ -f "$path" ]] || { warn "llama-server não encontrado: $path"; return 1; }
+  [[ -x "$path" ]] || { warn "llama-server não é executável: $path"; return 1; }
+
+  help="$("$path" --help 2>&1)" || { warn "llama-server falhou ao executar --help: $path"; return 1; }
+  grep -q -- '--host' <<<"$help" || { warn "llama-server não expõe --host."; return 1; }
+  if ! grep -Eqi 'unix|\.sock' <<<"$help"; then
+    warn "não foi identificado suporte a Unix Socket no llama-server."
+    return 1
+  fi
+  return 0
+}
+
+ask_llama_source() {
+  local default="$1" value
+  while true; do
+    value="$(ask_value 'Caminho do llama-server existente' "$default")"
+    if validate_llama_source "$value"; then
+      printf '%s' "$value"
+      return 0
+    fi
+  done
+}
+
+detect_model_default() {
+  local dir found
+  for dir in \
+    "$DEFAULT_MODEL_DIR" \
+    "${HOME:-}/.cache/llama.cpp" \
+    "${HOME:-}/models" \
+    "$PWD"
+  do
+    [[ -d "$dir" ]] || continue
+    found="$(find "$dir" -maxdepth 3 -type f -name '*.gguf' -print -quit 2>/dev/null || true)"
+    [[ -n "$found" ]] && { printf '%s\n' "$found"; return 0; }
+  done
+  printf '%s\n' "$DEFAULT_MODEL_DIR/model.gguf"
+}
+
+validate_model_source() {
+  local path="$1"
+  validate_absolute_path "modelo GGUF" "$path" || return 1
+  [[ "$path" == *.gguf || "$path" == *.GGUF ]] || { warn "o modelo deve possuir extensão .gguf: $path"; return 1; }
+  [[ -f "$path" ]] || { warn "modelo GGUF não encontrado: $path"; return 1; }
+  [[ -s "$path" ]] || { warn "modelo GGUF está vazio: $path"; return 1; }
+  [[ -r "$path" ]] || { warn "modelo GGUF não pode ser lido: $path"; return 1; }
+  return 0
+}
+
+ask_model_source() {
+  local default="$1" value
+  while true; do
+    value="$(ask_value 'Caminho do modelo GGUF existente' "$default")"
+    if validate_model_source "$value"; then
       printf '%s' "$value"
       return 0
     fi
@@ -515,7 +601,8 @@ prepare_directories() {
 
 
 create_bootstrap_config() {
-  local config_dir="$1" group="$2" config_file temp_config
+  local config_dir="$1" group="$2" llama_binary="$3" model_file="$4"
+  local config_file temp_config
   config_file="$config_dir/config.yaml"
 
   if [[ -e "$config_file" ]]; then
@@ -524,16 +611,68 @@ create_bootstrap_config() {
   fi
 
   temp_config="$(mktemp)"
-  cat >"$temp_config" <<'__CONFIG__'
+  cat >"$temp_config" <<__CONFIG__
 # ai-bash-gen - configuração bootstrap
-#
-# O daemon atual valida e carrega este arquivo, mas o schema completo
-# de configuração ainda será definido conforme a evolução do projeto.
+llama:
+  binary: "$llama_binary"
+  model: "$model_file"
+  context_size: 2048
+  startup_timeout: 2m
+  request_timeout: 3m
+  max_tokens: 1536
+  temperature: 0.2
 __CONFIG__
 
   "${SUDO[@]}" install -o root -g "$group" -m 0640 "$temp_config" "$config_file"
   rm -f -- "$temp_config"
   ok "configuração bootstrap criada em $config_file"
+}
+
+install_runtime_assets() {
+  local llama_source="$1" llama_target="$2" model_source="$3" model_target="$4"
+  local owner_user="$5" owner_group="$6" use_service_user="$7"
+  local model_dir
+
+  model_dir="$(dirname -- "$model_target")"
+  "${SUDO[@]}" install -d -o root -g root -m 0755 "$(dirname -- "$llama_target")"
+  "${SUDO[@]}" install -o root -g root -m 0755 "$llama_source" "$llama_target"
+
+  if [[ "$use_service_user" == "yes" ]]; then
+    "${SUDO[@]}" install -d -o "$owner_user" -g "$owner_group" -m 0750 "$model_dir"
+  else
+    "${SUDO[@]}" install -d -o root -g root -m 0755 "$model_dir"
+  fi
+
+  if [[ "$(readlink -f -- "$model_source")" != "$(readlink -m -- "$model_target")" ]]; then
+    info "copiando modelo GGUF para $model_target; arquivos grandes podem levar alguns minutos..."
+    "${SUDO[@]}" cp --reflink=auto --sparse=always -- "$model_source" "$model_target"
+  fi
+
+  if [[ "$use_service_user" == "yes" ]]; then
+    "${SUDO[@]}" chown "$owner_user:$owner_group" "$model_target"
+    "${SUDO[@]}" chmod 0640 "$model_target"
+  else
+    "${SUDO[@]}" chown root:root "$model_target"
+    "${SUDO[@]}" chmod 0644 "$model_target"
+  fi
+
+  ok "llama-server instalado em $llama_target"
+  ok "modelo GGUF disponível em $model_target"
+}
+
+validate_runtime_dependencies() {
+  local bin="$1" config_file="$2" service_user="$3" use_service_user="$4"
+  local output
+
+  if [[ "$use_service_user" == "yes" ]]; then
+    output="$("${SUDO[@]}" runuser -u "$service_user" -- "$bin" --config "$config_file" --check-dependencies 2>&1)" ||
+      die "validação Go das dependências falhou para o usuário de serviço: $output"
+  else
+    output="$("$bin" --config "$config_file" --check-dependencies 2>&1)" ||
+      die "validação Go das dependências falhou: $output"
+  fi
+  info "$output"
+  ok "dependências de runtime validadas pelo binário Go."
 }
 
 create_systemd_unit() {
@@ -726,6 +865,10 @@ Binário instalado : $BIN_TARGET
 Configuração       : $CONFIG_DIR
 Estado persistente : $STATE_DIR
 Runtime            : $RUNTIME_DIR
+llama-server origem: $LLAMA_SOURCE
+llama-server alvo  : $LLAMA_TARGET
+Modelo GGUF origem : $MODEL_SOURCE
+Modelo GGUF alvo   : $MODEL_TARGET
 Usuário de serviço : $SERVICE_USER
 Grupo de serviço   : $SERVICE_GROUP
 Usuário cliente    : ${CLIENT_USER:-nenhum}
@@ -779,6 +922,20 @@ main() {
   RUNTIME_DIR="$(ask_absolute_path 'Diretório de runtime' "$DEFAULT_RUNTIME_DIR" 'Diretório de runtime')"
   confirm_value "Diretório de runtime" "$RUNTIME_DIR"
 
+  LLAMA_SOURCE="$(ask_llama_source "$(detect_llama_default)")"
+  LLAMA_SOURCE="$(absolute_path "$LLAMA_SOURCE")"
+  confirm_value "llama-server detectado" "$LLAMA_SOURCE"
+
+  LLAMA_TARGET="$(ask_absolute_path 'Destino controlado do llama-server' "$DEFAULT_LLAMA_TARGET" 'Destino do llama-server')"
+  confirm_value "Destino do llama-server" "$LLAMA_TARGET"
+
+  MODEL_SOURCE="$(ask_model_source "$(detect_model_default)")"
+  MODEL_SOURCE="$(absolute_path "$MODEL_SOURCE")"
+  confirm_value "Modelo GGUF detectado" "$MODEL_SOURCE"
+
+  MODEL_TARGET="$STATE_DIR/models/$(basename -- "$MODEL_SOURCE")"
+  confirm_value "Destino controlado do modelo GGUF" "$MODEL_TARGET"
+
   SERVICE_USER="$(ask_value 'Usuário de serviço' "$DEFAULT_SERVICE_USER")"
   confirm_value "Usuário de serviço" "$SERVICE_USER"
 
@@ -826,9 +983,19 @@ main() {
   CREATE_BOOTSTRAP_CONFIG="no"
   if [[ "$INSTALL_SYSTEMD" == "yes" ]]; then
     if [[ -e "$CONFIG_DIR/config.yaml" ]]; then
-      CREATE_BOOTSTRAP_CONFIG="existing"
-      info "configuração existente será utilizada: $CONFIG_DIR/config.yaml"
-    elif ask_yes_no "config.yaml não existe. Criar configuração bootstrap?" "Y"; then
+      if grep -Fq '# ai-bash-gen - configuração bootstrap' "$CONFIG_DIR/config.yaml" 2>/dev/null &&
+         ! grep -Eq '^[[:space:]]*binary:' "$CONFIG_DIR/config.yaml"; then
+        warn "foi detectada uma configuração bootstrap antiga, sem dependências de runtime."
+        if ask_yes_no "Substituir a configuração bootstrap antiga pela configuração funcional?" "Y"; then
+          CREATE_BOOTSTRAP_CONFIG="replace"
+        else
+          CREATE_BOOTSTRAP_CONFIG="existing"
+        fi
+      else
+        CREATE_BOOTSTRAP_CONFIG="existing"
+      fi
+      info "configuração existente: $CONFIG_DIR/config.yaml"
+    elif ask_yes_no "config.yaml não existe. Criar configuração funcional?" "Y"; then
       CREATE_BOOTSTRAP_CONFIG="yes"
     else
       die "o serviço requer $CONFIG_DIR/config.yaml."
@@ -868,11 +1035,20 @@ main() {
   ok "binário instalado validado: $INSTALLED_VERSION"
   prepare_directories "$CONFIG_DIR" "$STATE_DIR" "$RUNTIME_DIR" "$SERVICE_USER" "$SERVICE_GROUP" "$CREATE_SERVICE_ACCOUNT"
 
+  install_runtime_assets "$LLAMA_SOURCE" "$LLAMA_TARGET" "$MODEL_SOURCE" "$MODEL_TARGET" \
+    "$SERVICE_USER" "$SERVICE_GROUP" "$CREATE_SERVICE_ACCOUNT"
+
   if [[ "$INSTALL_SYSTEMD" == "yes" ]]; then
     [[ "$CREATE_SERVICE_ACCOUNT" == "yes" ]] || die "systemd requer usuário/grupo de serviço dedicados neste instalador."
-    if [[ "$CREATE_BOOTSTRAP_CONFIG" == "yes" ]]; then
-      create_bootstrap_config "$CONFIG_DIR" "$SERVICE_GROUP"
+    if [[ "$CREATE_BOOTSTRAP_CONFIG" == "replace" ]]; then
+      "${SUDO[@]}" rm -f -- "$CONFIG_DIR/config.yaml"
+      CREATE_BOOTSTRAP_CONFIG="yes"
     fi
+    if [[ "$CREATE_BOOTSTRAP_CONFIG" == "yes" ]]; then
+      create_bootstrap_config "$CONFIG_DIR" "$SERVICE_GROUP" "$LLAMA_TARGET" "$MODEL_TARGET"
+    fi
+
+    validate_runtime_dependencies "$BIN_TARGET" "$CONFIG_DIR/config.yaml" "$SERVICE_USER" "$CREATE_SERVICE_ACCOUNT"
 
     create_systemd_unit "$UNIT_PATH" "$BIN_TARGET" "$CONFIG_DIR" "$RUNTIME_DIR" "$SERVICE_USER" "$SERVICE_GROUP"
 
@@ -900,6 +1076,7 @@ main() {
   ok "instalação concluída."
   info "teste: $BIN_TARGET --version"
   info "caminhos: $BIN_TARGET --show-paths"
+  info "dependências: $BIN_TARGET --config $CONFIG_DIR/config.yaml --check-dependencies"
   info "socket esperado: $RUNTIME_DIR/routes/generate.sock"
   if [[ "${START_SERVICE:-no}" == "yes" ]]; then
     info "serviço e rotas foram validados após a inicialização."
