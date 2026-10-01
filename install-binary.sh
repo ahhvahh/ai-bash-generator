@@ -430,6 +430,48 @@ select_or_download_model() {
   done
 }
 
+select_or_download_generator_model() {
+  local state_dir="$1"
+  local choice key detected
+
+  if [[ "${FORCE_MODE:-0}" == "1" ]]; then
+    model_catalog_resolve "$DEFAULT_GENERATOR_MODEL_KEY" || die "modelo padrão do bash-generator inválido: $DEFAULT_GENERATOR_MODEL_KEY"
+    download_selected_model "$state_dir" "bash-generator.gguf"
+    GENERATOR_MODEL_SOURCE="$MODEL_SOURCE"
+    GENERATOR_MODEL_INSTALLATION_MODE="$MODEL_INSTALLATION_MODE"
+    return 0
+  fi
+
+  echo
+  info "selecione o modelo do bash-generator; recomenda-se um modelo de maior capacidade que o request-normalizer."
+  print_model_catalog
+  while true; do
+    choice="$(ask_value 'Selecione o modelo do bash-generator' '3')"
+    case "$choice" in
+      1) key="qwen35-08b-q4" ;;
+      2) key="qwen35-08b-q8" ;;
+      3) key="qwen25-coder-15b-q4" ;;
+      4) key="qwen35-4b-q4" ;;
+      5)
+        detected="$(detect_model_default)"
+        GENERATOR_MODEL_SOURCE="$(ask_model_source "$detected")"
+        GENERATOR_MODEL_INSTALLATION_MODE="manual"
+        return 0
+        ;;
+      *) warn "opção de modelo inválida: $choice"; continue ;;
+    esac
+
+    model_catalog_resolve "$key" || die "entrada inválida no catálogo de modelos: $key"
+    printf '\nSelecionado para bash-generator: %s (%s)\n%s\n' "$MODEL_LABEL" "$MODEL_SIZE" "$MODEL_NOTE"
+    if ask_yes_no "Baixar este modelo para o bash-generator agora?" "Y"; then
+      download_selected_model "$state_dir" "bash-generator.gguf"
+      GENERATOR_MODEL_SOURCE="$MODEL_SOURCE"
+      GENERATOR_MODEL_INSTALLATION_MODE="$MODEL_INSTALLATION_MODE"
+      return 0
+    fi
+  done
+}
+
 confirm_value() {
   local label="$1"
   local value="$2"
