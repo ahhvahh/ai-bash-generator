@@ -195,7 +195,9 @@ else
       'state_dir=/var/lib/ai-bash-gen' \
       'runtime_dir=/run/ai-bash-gen' \
       'routes_dir=/run/ai-bash-gen/routes' \
-      'llama_socket=/run/ai-bash-gen/internal/llama.sock' \
+      'normalizer_socket=/run/ai-bash-gen/internal/request-normalizer.sock' \
+      'generator_socket=/run/ai-bash-gen/internal/bash-generator.sock' \
+      'llama_socket=/run/ai-bash-gen/internal/bash-generator.sock' \
       'generate_socket=/run/ai-bash-gen/routes/generate.sock'
     do
       if ! grep -Fxq "$expected" <<<"$RUN_STDOUT"; then
