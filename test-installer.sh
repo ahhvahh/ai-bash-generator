@@ -244,7 +244,9 @@ if [[ "${AI_BASH_GEN_TEST_PRIVILEGED:-0}" == "1" ]]; then
   SUDO=(sudo)
 
   force_source="$tmp/force-source"
-  force_target="$tmp/force-target"
+  force_install_dir="$tmp/force-install"
+  force_target="$force_install_dir/ai-bash-gen"
+  mkdir -p "$force_install_dir"
   printf 'versao-antiga\n' | sudo tee "$force_target" >/dev/null
   printf 'versao-nova\n' >"$force_source"
   sudo chmod 0755 "$force_target"
@@ -254,7 +256,7 @@ if [[ "${AI_BASH_GEN_TEST_PRIVILEGED:-0}" == "1" ]]; then
   FORCE_MODE=0
   [[ "$(cat "$force_target")" == "versao-nova" ]] || fail "--force não substituiu binário existente"
   compgen -G "$force_target.backup.*" >/dev/null || fail "--force não criou backup do binário substituído"
-  sudo rm -f -- "$force_target" "$force_target".backup.*
+  sudo rm -rf -- "$force_install_dir"
   pass "--force substitui binário diferente sem cancelar a instalação"
 
   service_group="abgsg$(date +%s)"
