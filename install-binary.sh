@@ -1516,9 +1516,14 @@ llama.cpp versão   : $LLAMA_CPP_VERSION
 llama-server modo  : ${LLAMA_INSTALLATION_MODE:-unknown}
 llama-server origem: $LLAMA_SOURCE
 llama-server alvo  : $LLAMA_TARGET
-Modelo GGUF modo   : ${MODEL_INSTALLATION_MODE:-unknown}
-Modelo GGUF origem : $MODEL_SOURCE
-Modelo GGUF alvo   : $MODEL_TARGET
+Normalizer modelo  : $NORMALIZER_MODEL_SOURCE
+Normalizer alvo    : $NORMALIZER_MODEL_TARGET
+Normalizer modo    : ${NORMALIZER_MODEL_INSTALLATION_MODE:-unknown}
+Generator modelo   : $GENERATOR_MODEL_SOURCE
+Generator alvo     : $GENERATOR_MODEL_TARGET
+Generator modo     : ${GENERATOR_MODEL_INSTALLATION_MODE:-unknown}
+PostgreSQL DB      : $DEFAULT_POSTGRES_DATABASE
+PostgreSQL socket  : $DEFAULT_POSTGRES_HOST
 Usuário de serviço : $SERVICE_USER
 Grupo de serviço   : $SERVICE_GROUP
 Usuário cliente    : ${CLIENT_USER:-nenhum}
