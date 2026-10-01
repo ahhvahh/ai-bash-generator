@@ -1002,7 +1002,7 @@ __CONFIG__
 
 migrate_managed_runtime_defaults() {
   local config_file="$1"
-  local temp_file backup changed=0
+  local temp_file backup
 
   [[ -f "$config_file" ]] || return 0
   grep -Fq '# ai-bash-gen - configuração bootstrap' "$config_file" 2>/dev/null || {
@@ -1010,9 +1010,9 @@ migrate_managed_runtime_defaults() {
     return 0
   }
 
-  if ! grep -Eq '^[[:space:]]*context_size:[[:space:]]*2048([[:space:]]|$)' "$config_file" &&
-     ! grep -Eq '^[[:space:]]*request_timeout:[[:space:]]*3m([[:space:]]|$)' "$config_file" &&
-     ! grep -Eq '^[[:space:]]*max_tokens:[[:space:]]*1536([[:space:]]|$)' "$config_file"; then
+  if ! grep -Eq '^[[:space:]]*context_size:[[:space:]]*2048[[:space:]]*$' "$config_file" &&
+     ! grep -Eq '^[[:space:]]*request_timeout:[[:space:]]*3m[[:space:]]*$' "$config_file" &&
+     ! grep -Eq '^[[:space:]]*max_tokens:[[:space:]]*1536[[:space:]]*$' "$config_file"; then
     info "configuração gerenciada já usa parâmetros atuais/customizados; nenhuma migração necessária."
     return 0
   fi
@@ -1026,29 +1026,21 @@ migrate_managed_runtime_defaults() {
   }
 
   temp_file="$(mktemp)"
-  awk     -v context="$DEFAULT_CONTEXT_SIZE"     -v request_timeout="$DEFAULT_REQUEST_TIMEOUT"     -v max_tokens="$DEFAULT_MAX_TOKENS" '
-      /^[[:space:]]*context_size:[[:space:]]*2048([[:space:]]|$)/ {
-        sub(/2048([[:space:]]*)$/, context "\\1")
-        changed=1
+  if ! awk \
+    -v context="$DEFAULT_CONTEXT_SIZE" \
+    -v request_timeout="$DEFAULT_REQUEST_TIMEOUT" \
+    -v max_tokens="$DEFAULT_MAX_TOKENS" '
+      /^[[:space:]]*context_size:[[:space:]]*2048[[:space:]]*$/ {
+        sub(/2048[[:space:]]*$/, context)
       }
-      /^[[:space:]]*request_timeout:[[:space:]]*3m([[:space:]]|$)/ {
-        sub(/3m([[:space:]]*)$/, request_timeout "\\1")
-        changed=1
+      /^[[:space:]]*request_timeout:[[:space:]]*3m[[:space:]]*$/ {
+        sub(/3m[[:space:]]*$/, request_timeout)
       }
-      /^[[:space:]]*max_tokens:[[:space:]]*1536([[:space:]]|$)/ {
-        sub(/1536([[:space:]]*)$/, max_tokens "\\1")
-        changed=1
+      /^[[:space:]]*max_tokens:[[:space:]]*1536[[:space:]]*$/ {
+        sub(/1536[[:space:]]*$/, max_tokens)
       }
       { print }
-      END { if (changed) exit 0; exit 3 }
-    ' "$config_file" >"$temp_file"
-  awk_rc=$?
-
-  if [[ "$awk_rc" -eq 3 ]]; then
-    rm -f -- "$temp_file"
-    info "nenhuma alteração de parâmetros foi necessária."
-    return 0
-  elif [[ "$awk_rc" -ne 0 ]]; then
+    ' "$config_file" >"$temp_file"; then
     rm -f -- "$temp_file"
     die "falha ao preparar migração da configuração: $config_file"
   fi
