@@ -341,9 +341,10 @@ print_model_catalog() {
 
 download_selected_model() {
   local state_dir="$1"
+  local target_name="${2:-model.gguf}"
   local model_dir="$state_dir/models"
-  local target="$model_dir/model.gguf"
-  local partial="$model_dir/.model.gguf.part"
+  local target="$model_dir/$target_name"
+  local partial="$model_dir/.${target_name}.part"
   local actual_sha
 
   ensure_debian_package_list "download de modelos GGUF" "${MODEL_DOWNLOAD_PACKAGES[@]}"
@@ -377,8 +378,8 @@ download_selected_model() {
     printf 'label=%s\n' "$MODEL_LABEL"
     printf 'source=%s\n' "$MODEL_URL"
     printf 'sha256=%s\n' "$MODEL_SHA256"
-  } | "${SUDO[@]}" tee "$model_dir/model.info" >/dev/null
-  "${SUDO[@]}" chmod 0644 "$model_dir/model.info"
+  } | "${SUDO[@]}" tee "$model_dir/${target_name}.info" >/dev/null
+  "${SUDO[@]}" chmod 0644 "$model_dir/${target_name}.info"
 
   MODEL_SOURCE="$target"
   MODEL_INSTALLATION_MODE="downloaded"
