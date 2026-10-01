@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ahhvahh/ai-bash-generator/internal/catalog"
 	"github.com/ahhvahh/ai-bash-generator/internal/observability"
 	"github.com/ahhvahh/ai-bash-generator/internal/output"
 	"github.com/ahhvahh/ai-bash-generator/internal/protocol"
@@ -21,169 +22,110 @@ type Completer interface {
 	Complete(ctx context.Context, systemPrompt, userPrompt string) (string, error)
 }
 
+type CapabilitySearcher interface {
+	Search(context.Context, catalog.SearchRequest) (catalog.SearchResult, error)
+}
+
 type Runner struct {
-	completer Completer
-	timeout   time.Duration
+	normalizer        Completer
+	generator         Completer
+	catalog           CapabilitySearcher
+	normalizerTimeout time.Duration
+	generatorTimeout  time.Duration
+	legacy            bool
 }
 
 func NewRunner(completer Completer, timeout time.Duration) *Runner {
-	return &Runner{completer: completer, timeout: timeout}
+	return &Runner{
+		generator:         completer,
+		normalizerTimeout: timeout,
+		generatorTimeout:  timeout,
+		legacy:            true,
+	}
+}
+
+func NewOrchestratedRunner(
+	normalizer Completer,
+	generator Completer,
+	searcher CapabilitySearcher,
+	normalizerTimeout time.Duration,
+	generatorTimeout time.Duration,
+) *Runner {
+	return &Runner{
+		normalizer:        normalizer,
+		generator:         generator,
+		catalog:           searcher,
+		normalizerTimeout: normalizerTimeout,
+		generatorTimeout:  generatorTimeout,
+	}
 }
 
 func (r *Runner) Generate(ctx context.Context, request protocol.GenerateRequest, progress func(protocol.Stage, protocol.ProgressState, string) error) (protocol.BashArtifact, error) {
-	if r.completer == nil {
-		return protocol.BashArtifact{}, errors.New("completer não configurado")
+	if r.generator == nil {
+		return protocol.BashArtifact{}, errors.New("bash-generator não configurado")
+	}
+	if !r.legacy && r.normalizer == nil {
+		return protocol.BashArtifact{}, errors.New("request-normalizer não configurado")
 	}
 	if strings.TrimSpace(request.Text) == "" {
 		return protocol.BashArtifact{}, errors.New("instrução vazia")
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, r.timeout)
-	defer cancel()
+	target := request.TargetStage
+	if target == protocol.StageUnspecified {
+		target = protocol.StageBashOutput
+	}
+	if target < protocol.StageRequestNormalizer || target > protocol.StageBashOutput {
+		return protocol.BashArtifact{}, fmt.Errorf("target_stage inválido: %d", target)
+	}
+
 	logger := observability.Logger(ctx).With("component", "pipeline")
 	pipelineStarted := time.Now()
 	logger.Debug("pipeline iniciado",
 		"event", "pipeline_start",
-		"timeout_ms", r.timeout.Milliseconds(),
 		"requested_filename", request.RequestedFilename,
+		"target_stage", target.String(),
 		"max_generation_attempts", maxGenerationAttempts,
 	)
 
-	if err := progress(protocol.StageRequestNormalizer, protocol.StateStarted, "normalizando solicitação"); err != nil {
+	normalized, err := r.runNormalizer(ctx, request, progress, logger)
+	if err != nil {
 		return protocol.BashArtifact{}, err
 	}
-	normalized := strings.TrimSpace(request.Text)
-	logger.Debug("solicitação normalizada",
-		"event", "request_normalized",
-		"input_chars", len([]rune(request.Text)),
-		"normalized_chars", len([]rune(normalized)),
-	)
-	if err := progress(protocol.StageRequestNormalizer, protocol.StateCompleted, "solicitação normalizada"); err != nil {
-		return protocol.BashArtifact{}, err
+	if target == protocol.StageRequestNormalizer {
+		return stageArtifact("request-normalizer.textproto", normalized.Raw), nil
+	}
+	if normalized.Status != "NORMALIZATION_STATUS_READY" {
+		return protocol.BashArtifact{}, fmt.Errorf("normalização não está pronta: status=%s", normalized.Status)
 	}
 
-	if err := progress(protocol.StageSearchCapabilities, protocol.StateStarted, "avaliando capabilities disponíveis"); err != nil {
+	searchResult, err := r.runCapabilitySearch(ctx, normalized, progress)
+	if err != nil {
 		return protocol.BashArtifact{}, err
 	}
-	// O catálogo PostgreSQL/MCP ainda não está conectado ao pipeline mínimo.
-	// O log abaixo é intencional: deixa explícito que nenhuma consulta foi
-	// executada, evitando interpretar esta etapa como uma busca real.
-	logger.Warn("consulta ao catálogo de capabilities não executada",
-		"event", "database_stage_not_implemented",
-		"stage", "search-capabilities",
-		"database", "postgresql",
-		"database_query_executed", false,
-		"capability_catalog", "in_development",
-	)
-	if err := progress(protocol.StageSearchCapabilities, protocol.StateCompleted, "EM DESENVOLVIMENTO: PostgreSQL/Capability Catalog ainda não conectado; consulta ao banco não executada"); err != nil {
-		return protocol.BashArtifact{}, err
+	if target == protocol.StageSearchCapabilities {
+		return stageArtifact("search-capabilities.textproto", searchResult.FormatTextProto()), nil
 	}
 
-	var content string
-	var validationErr error
+	generatorInput := request.Text
+	if !r.legacy {
+		generatorInput = buildGeneratorInput(normalized, searchResult)
+	}
 
-	for attempt := 1; attempt <= maxGenerationAttempts; attempt++ {
-		generatorMessage := "gerando script Bash com llama-server"
-		userPrompt := normalized
-		if attempt > 1 {
-			generatorMessage = fmt.Sprintf("regenerando script Bash após falha de validação (tentativa %d/%d)", attempt, maxGenerationAttempts)
-			userPrompt = buildRepairPrompt(normalized, validationErr)
-		}
-
-		if err := progress(protocol.StageBashGenerator, protocol.StateStarted, generatorMessage); err != nil {
-			return protocol.BashArtifact{}, err
-		}
-
-		logger.Info("tentativa de geração iniciada",
-			"event", "generation_attempt_start",
-			"attempt", attempt,
-			"max_attempts", maxGenerationAttempts,
-			"repair", attempt > 1,
-		)
-		logger.Debug("enviando solicitação ao llama-server",
-			"event", "llama_generation_start",
-			"attempt", attempt,
-			"system_prompt_chars", len([]rune(generatorSystemPrompt)),
-			"user_prompt_chars", len([]rune(userPrompt)),
-		)
-
-		generated, err := r.completer.Complete(ctx, generatorSystemPrompt, userPrompt)
+	if target == protocol.StageBashGenerator {
+		raw, err := r.generateOnce(ctx, generatorInput, 1, progress, logger, false)
 		if err != nil {
-			_ = progress(protocol.StageBashGenerator, protocol.StateFailed, err.Error())
-			return protocol.BashArtifact{}, fmt.Errorf("bash-generator tentativa %d/%d: %w", attempt, maxGenerationAttempts, err)
-		}
-
-		logger.Debug("resposta recebida do llama-server",
-			"event", "llama_generation_response",
-			"attempt", attempt,
-			"raw_response_chars", len([]rune(generated)),
-			"raw_response_bytes", len(generated),
-		)
-
-		content = cleanGeneratedBash(generated)
-		if strings.TrimSpace(content) == "" {
-			err := errors.New("modelo retornou script vazio")
-			_ = progress(protocol.StageBashGenerator, protocol.StateFailed, err.Error())
 			return protocol.BashArtifact{}, err
 		}
-
-		if err := progress(protocol.StageBashGenerator, protocol.StateCompleted, fmt.Sprintf("script Bash gerado (tentativa %d/%d)", attempt, maxGenerationAttempts)); err != nil {
-			return protocol.BashArtifact{}, err
-		}
-
-		if err := progress(protocol.StageValidation, protocol.StateStarted, fmt.Sprintf("validando sintaxe com bash -n (tentativa %d/%d)", attempt, maxGenerationAttempts)); err != nil {
-			return protocol.BashArtifact{}, err
-		}
-
-		validationStarted := time.Now()
-		logger.Debug("executando validação sintática",
-			"event", "bash_validation_start",
-			"attempt", attempt,
-			"validator", "bash -n",
-			"content_bytes", len(content),
-		)
-
-		validationErr = validateBash(ctx, content)
-		if validationErr == nil {
-			logger.Debug("validação sintática concluída",
-				"event", "bash_validation_complete",
-				"attempt", attempt,
-				"validator", "bash -n",
-				"duration_ms", time.Since(validationStarted).Milliseconds(),
-			)
-			if err := progress(protocol.StageValidation, protocol.StateCompleted, fmt.Sprintf("bash -n aprovado (tentativa %d/%d)", attempt, maxGenerationAttempts)); err != nil {
-				return protocol.BashArtifact{}, err
-			}
-			break
-		}
-
-		logger.Warn("script gerado falhou na validação sintática",
-			"event", "generation_validation_failed",
-			"attempt", attempt,
-			"max_attempts", maxGenerationAttempts,
-			"duration_ms", time.Since(validationStarted).Milliseconds(),
-			"validation_error", validationErr.Error(),
-		)
-
-		if attempt < maxGenerationAttempts {
-			message := fmt.Sprintf("tentativa %d/%d falhou no bash -n; solicitando nova geração ao LLM: %s", attempt, maxGenerationAttempts, validationErr.Error())
-			_ = progress(protocol.StageValidation, protocol.StateFailed, message)
-			logger.Warn("nova geração solicitada ao LLM",
-				"event", "generation_retry_requested",
-				"failed_attempt", attempt,
-				"next_attempt", attempt+1,
-				"reason", "bash_validation_failed",
-				"validation_error", validationErr.Error(),
-			)
-			continue
-		}
-
-		_ = progress(protocol.StageValidation, protocol.StateFailed, validationErr.Error())
-		return protocol.BashArtifact{}, fmt.Errorf("script Bash inválido após %d tentativas: %w", maxGenerationAttempts, validationErr)
+		return stageArtifact("bash-generator.txt", raw), nil
 	}
 
-	if validationErr != nil {
-		return protocol.BashArtifact{}, fmt.Errorf("script Bash não validado: %w", validationErr)
+	content, err := r.generateAndValidate(ctx, generatorInput, progress, logger)
+	if err != nil {
+		return protocol.BashArtifact{}, err
+	}
+	if target == protocol.StageValidation {
+		return stageArtifact("validation.sh", content), nil
 	}
 
 	if err := progress(protocol.StageBashOutput, protocol.StateStarted, "materializando artefato Bash"); err != nil {
@@ -221,14 +163,279 @@ func (r *Runner) Generate(ctx context.Context, request protocol.GenerateRequest,
 	return artifact, nil
 }
 
+func (r *Runner) runNormalizer(
+	ctx context.Context,
+	request protocol.GenerateRequest,
+	progress func(protocol.Stage, protocol.ProgressState, string) error,
+	logger interface {
+		Debug(string, ...any)
+		Info(string, ...any)
+		Error(string, ...any)
+	},
+) (NormalizedRequest, error) {
+	if err := progress(protocol.StageRequestNormalizer, protocol.StateStarted, "normalizando solicitação com request-normalizer"); err != nil {
+		return NormalizedRequest{}, err
+	}
+
+	if r.legacy {
+		normalized := passthroughNormalized(request.Text)
+		if err := progress(protocol.StageRequestNormalizer, protocol.StateCompleted, "solicitação normalizada (modo compatibilidade)"); err != nil {
+			return NormalizedRequest{}, err
+		}
+		return normalized, nil
+	}
+
+	started := time.Now()
+	callCtx, cancel := context.WithTimeout(ctx, r.normalizerTimeout)
+	defer cancel()
+	logger.Debug("request-normalizer iniciado",
+		"event", "normalizer_llm_request_start",
+		"input_chars", len([]rune(request.Text)),
+	)
+
+	raw, err := r.normalizer.Complete(callCtx, normalizerSystemPrompt, userRequestTextProto(request.Text))
+	if err != nil {
+		_ = progress(protocol.StageRequestNormalizer, protocol.StateFailed, err.Error())
+		return NormalizedRequest{}, fmt.Errorf("request-normalizer: %w", err)
+	}
+	normalized, err := parseNormalizedRequest(raw)
+	if err != nil {
+		_ = progress(protocol.StageRequestNormalizer, protocol.StateFailed, err.Error())
+		return NormalizedRequest{}, err
+	}
+
+	logger.Info("solicitação normalizada",
+		"event", "request_normalized",
+		"duration_ms", time.Since(started).Milliseconds(),
+		"normalization_status", normalized.Status,
+		"task_count", len(normalized.Tasks),
+		"intent", normalized.Intent,
+		"normalized_chars", len([]rune(normalized.Raw)),
+	)
+	message := fmt.Sprintf("status=%s tasks=%d", normalized.Status, len(normalized.Tasks))
+	if err := progress(protocol.StageRequestNormalizer, protocol.StateCompleted, message); err != nil {
+		return NormalizedRequest{}, err
+	}
+	return normalized, nil
+}
+
+func (r *Runner) runCapabilitySearch(
+	ctx context.Context,
+	normalized NormalizedRequest,
+	progress func(protocol.Stage, protocol.ProgressState, string) error,
+) (catalog.SearchResult, error) {
+	if err := progress(protocol.StageSearchCapabilities, protocol.StateStarted, "consultando Capability Catalog no PostgreSQL"); err != nil {
+		return catalog.SearchResult{}, err
+	}
+
+	if r.catalog == nil {
+		if err := progress(protocol.StageSearchCapabilities, protocol.StateCompleted, "catálogo não configurado; zero candidatos"); err != nil {
+			return catalog.SearchResult{}, err
+		}
+		return catalog.SearchResult{}, nil
+	}
+
+	request := catalog.SearchRequest{
+		Intent:               normalized.Intent,
+		CanonicalInstruction: normalized.CanonicalInstruction,
+		InputDescription:     normalized.InputDescription,
+		OutputDescription:    normalized.OutputDescription,
+	}
+	for _, task := range normalized.Tasks {
+		request.Tasks = append(request.Tasks, catalog.TaskQuery{
+			ID:                task.ID,
+			Instruction:       task.Instruction,
+			InputDescription:  task.InputDescription,
+			OutputDescription: task.OutputDescription,
+		})
+	}
+
+	result, err := r.catalog.Search(ctx, request)
+	if err != nil {
+		_ = progress(protocol.StageSearchCapabilities, protocol.StateFailed, err.Error())
+		return catalog.SearchResult{}, err
+	}
+	message := fmt.Sprintf(
+		"PostgreSQL consultado: composite=%d task_queries=%d task_candidates=%d",
+		len(result.Composite), len(result.Tasks), result.TaskCandidateCount(),
+	)
+	if err := progress(protocol.StageSearchCapabilities, protocol.StateCompleted, message); err != nil {
+		return catalog.SearchResult{}, err
+	}
+	return result, nil
+}
+
+func (r *Runner) generateOnce(
+	ctx context.Context,
+	userPrompt string,
+	attempt int,
+	progress func(protocol.Stage, protocol.ProgressState, string) error,
+	logger interface {
+		Debug(string, ...any)
+		Info(string, ...any)
+		Error(string, ...any)
+	},
+	repair bool,
+) (string, error) {
+	message := "gerando com bash-generator"
+	if repair {
+		message = fmt.Sprintf("regenerando após falha de validação (tentativa %d/%d)", attempt, maxGenerationAttempts)
+	}
+	if err := progress(protocol.StageBashGenerator, protocol.StateStarted, message); err != nil {
+		return "", err
+	}
+
+	logger.Info("tentativa de geração iniciada",
+		"event", "generation_attempt_start",
+		"attempt", attempt,
+		"max_attempts", maxGenerationAttempts,
+		"repair", repair,
+	)
+	logger.Debug("enviando solicitação ao bash-generator",
+		"event", "generator_llm_request_start",
+		"attempt", attempt,
+		"user_prompt_chars", len([]rune(userPrompt)),
+	)
+
+	callCtx, cancel := context.WithTimeout(ctx, r.generatorTimeout)
+	defer cancel()
+	generated, err := r.generator.Complete(callCtx, generatorSystemPrompt, userPrompt)
+	if err != nil {
+		_ = progress(protocol.StageBashGenerator, protocol.StateFailed, err.Error())
+		return "", fmt.Errorf("bash-generator tentativa %d/%d: %w", attempt, maxGenerationAttempts, err)
+	}
+	if strings.TrimSpace(generated) == "" {
+		err := errors.New("modelo retornou conteúdo vazio")
+		_ = progress(protocol.StageBashGenerator, protocol.StateFailed, err.Error())
+		return "", err
+	}
+
+	logger.Debug("resposta recebida do bash-generator",
+		"event", "generator_llm_response",
+		"attempt", attempt,
+		"raw_response_chars", len([]rune(generated)),
+		"raw_response_bytes", len(generated),
+	)
+	if err := progress(protocol.StageBashGenerator, protocol.StateCompleted, fmt.Sprintf("resposta gerada (tentativa %d/%d)", attempt, maxGenerationAttempts)); err != nil {
+		return "", err
+	}
+	return generated, nil
+}
+
+func (r *Runner) generateAndValidate(
+	ctx context.Context,
+	basePrompt string,
+	progress func(protocol.Stage, protocol.ProgressState, string) error,
+	logger interface {
+		Debug(string, ...any)
+		Info(string, ...any)
+		Warn(string, ...any)
+		Error(string, ...any)
+	},
+) (string, error) {
+	var content string
+	var validationErr error
+
+	for attempt := 1; attempt <= maxGenerationAttempts; attempt++ {
+		userPrompt := basePrompt
+		repair := attempt > 1
+		if repair {
+			userPrompt = buildRepairPrompt(basePrompt, validationErr)
+		}
+
+		generated, err := r.generateOnce(ctx, userPrompt, attempt, progress, logger, repair)
+		if err != nil {
+			return "", err
+		}
+		content = cleanGeneratedBash(generated)
+		if strings.TrimSpace(content) == "" {
+			return "", errors.New("modelo retornou script vazio")
+		}
+
+		if err := progress(protocol.StageValidation, protocol.StateStarted, fmt.Sprintf("validando sintaxe com bash -n (tentativa %d/%d)", attempt, maxGenerationAttempts)); err != nil {
+			return "", err
+		}
+
+		validationStarted := time.Now()
+		logger.Debug("executando validação sintática",
+			"event", "bash_validation_start",
+			"attempt", attempt,
+			"validator", "bash -n",
+			"content_bytes", len(content),
+		)
+
+		validationErr = validateBash(ctx, content)
+		if validationErr == nil {
+			logger.Debug("validação sintática concluída",
+				"event", "bash_validation_complete",
+				"attempt", attempt,
+				"validator", "bash -n",
+				"duration_ms", time.Since(validationStarted).Milliseconds(),
+			)
+			if err := progress(protocol.StageValidation, protocol.StateCompleted, fmt.Sprintf("bash -n aprovado (tentativa %d/%d)", attempt, maxGenerationAttempts)); err != nil {
+				return "", err
+			}
+			return content, nil
+		}
+
+		logger.Warn("script gerado falhou na validação sintática",
+			"event", "generation_validation_failed",
+			"attempt", attempt,
+			"max_attempts", maxGenerationAttempts,
+			"duration_ms", time.Since(validationStarted).Milliseconds(),
+			"validation_error", validationErr.Error(),
+		)
+
+		if attempt < maxGenerationAttempts {
+			message := fmt.Sprintf("tentativa %d/%d falhou no bash -n; solicitando nova geração ao LLM: %s", attempt, maxGenerationAttempts, validationErr.Error())
+			_ = progress(protocol.StageValidation, protocol.StateFailed, message)
+			logger.Warn("nova geração solicitada ao LLM",
+				"event", "generation_retry_requested",
+				"failed_attempt", attempt,
+				"next_attempt", attempt+1,
+				"reason", "bash_validation_failed",
+				"validation_error", validationErr.Error(),
+			)
+			continue
+		}
+
+		_ = progress(protocol.StageValidation, protocol.StateFailed, validationErr.Error())
+		return "", fmt.Errorf("script Bash inválido após %d tentativas: %w", maxGenerationAttempts, validationErr)
+	}
+	return "", errors.New("script Bash não validado")
+}
+
+func stageArtifact(filename, content string) protocol.BashArtifact {
+	return protocol.BashArtifact{
+		Filename:       filename,
+		Content:        content,
+		FinalOutputRef: filename,
+	}
+}
+
+func buildGeneratorInput(normalized NormalizedRequest, search catalog.SearchResult) string {
+	return fmt.Sprintf(\`NormalizedRequest:
+%s
+
+SearchCapabilitiesResponse:
+%s
+
+Generate the Bash source that fulfills the normalized request.
+Capability candidates are discovery hints. Do not claim to reuse an implementation unless its implementation was actually supplied.
+Preserve every normalized task and requested constraint.\`,
+		normalized.Raw,
+		search.FormatTextProto(),
+	)
+}
+
 func buildRepairPrompt(originalRequest string, validationErr error) string {
 	errorText := "falha de validação desconhecida"
 	if validationErr != nil {
 		errorText = truncateForPrompt(validationErr.Error(), 1200)
 	}
-	return fmt.Sprintf(`The previous Bash generation for this request was invalid.
+	return fmt.Sprintf(\`The previous Bash generation for this request was invalid.
 
-Original request:
+Original normalized request and capability context:
 %s
 
 bash -n validation error:
@@ -236,10 +443,10 @@ bash -n validation error:
 
 Generate the script again FROM SCRATCH.
 Return only valid Bash source code.
-Keep it minimal and focused on the original request.
+Keep it focused on the request.
 Do not repeat the malformed previous structure.
 Make sure the result passes: bash -n
-`, originalRequest, errorText)
+\`, originalRequest, errorText)
 }
 
 func truncateForPrompt(value string, maxRunes int) string {
@@ -260,13 +467,13 @@ func validateBash(ctx context.Context, content string) error {
 
 func cleanGeneratedBash(content string) string {
 	content = strings.TrimSpace(content)
-	if strings.HasPrefix(content, "```") {
+	if strings.HasPrefix(content, "\`\`\`") {
 		if i := strings.IndexByte(content, '\n'); i >= 0 {
 			content = content[i+1:]
 		}
 		content = strings.TrimSpace(content)
-		if strings.HasSuffix(content, "```") {
-			content = strings.TrimSpace(strings.TrimSuffix(content, "```"))
+		if strings.HasSuffix(content, "\`\`\`") {
+			content = strings.TrimSpace(strings.TrimSuffix(content, "\`\`\`"))
 		}
 	}
 	if i := strings.Index(content, "#!"); i > 0 {
@@ -281,19 +488,24 @@ func cleanGeneratedBash(content string) string {
 	return content
 }
 
-const generatorSystemPrompt = `You generate Bash scripts for ai-bash-gen.
+const generatorSystemPrompt = \`You are the bash-generator for ai-bash-gen.
+
+The user request has already been normalized by another agent.
+You may receive capability candidate summaries discovered in PostgreSQL.
 
 Return only the Bash source code. Do not use Markdown fences and do not add explanations.
 
 Rules:
 - Target Debian/Linux and Bash.
 - Start with #!/usr/bin/env bash.
+- Treat NormalizedRequest as the source of truth.
+- Preserve every normalized task, literal value, constraint and final result.
+- Capability summaries are discovery hints only; never invent missing capability implementations.
 - Prefer set -Eeuo pipefail when it does not conflict with the requested behavior.
 - Quote variable expansions and paths safely.
 - Do not execute the script; only return its source.
 - Do not invent paths, credentials, hosts, filenames, or destructive intent that the user did not provide.
-- Avoid destructive operations unless the user explicitly requested them.
+- Avoid destructive operations unless the request explicitly requires them.
 - Keep the script focused on the requested task.
-- For simple requests, generate the smallest correct script; do not add menus, helper functions, arguments or documentation unless requested.
 - The returned source must pass bash -n.
-`
+\`
