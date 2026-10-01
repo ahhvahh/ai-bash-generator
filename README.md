@@ -328,9 +328,13 @@ bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils findut
 
 Se algum estiver ausente, o instalador oferece executar `apt-get update` e `apt-get install`.
 
+Antes de continuar a configuração do serviço, o instalador procura um `llama-server` compatível. Se não encontrar, ele oferece instalar automaticamente o componente usado pelo projeto: `llama.cpp v0.5.0`, fixado no commit `7fe450e19305b828c199d602c23a8337aaa1f03b`. A instalação automática adiciona, quando necessário, `git`, `cmake`, `build-essential` e `ca-certificates`, baixa o código-fonte oficial, compila somente o target `llama-server` em modo Release/CPU e com bibliotecas internas estáticas, e instala o resultado em `/usr/local/lib/ai-bash-gen/llama-server`.
+
+O `llama-server` não recebe uma unit systemd independente: seu processo é iniciado, monitorado e encerrado pelo próprio `ai-bash-gen`, que o mantém restrito ao Unix Domain Socket privado `/run/ai-bash-gen/internal/llama.sock`.
+
 O instalador também permite informar um usuário cliente. Esse usuário é incluído no grupo do serviço para conseguir atravessar `/run/ai-bash-gen/routes` e abrir sockets com modo `0660`. A nova associação de grupo requer uma nova sessão do usuário.
 
-Ao instalar a unit systemd, o instalador pergunta se deve iniciar/reiniciar o serviço e se deve habilitá-lo no boot. Quando a inicialização é solicitada, ele aguarda até 10 segundos, confirma que o serviço permaneceu ativo e valida todos os sockets públicos declarados por `--show-paths` dentro de `/run/ai-bash-gen/routes/`, incluindo existência, modo `0660` e grupo do serviço. Se alguma rota não aparecer, a instalação falha e imprime `systemctl status` e as últimas mensagens do `journalctl`.
+Ao instalar a unit systemd, o instalador pergunta se deve iniciar/reiniciar o serviço e se deve habilitá-lo no boot. Quando a inicialização é solicitada, ele aguarda até 180 segundos para permitir o carregamento inicial do modelo, confirma que o serviço permaneceu ativo e valida todos os sockets públicos declarados por `--show-paths` dentro de `/run/ai-bash-gen/routes/`, incluindo existência, modo `0660` e grupo do serviço. Se alguma rota não aparecer, a instalação falha e imprime `systemctl status` e as últimas mensagens do `journalctl`.
 
 Os caminhos informados ao instalador para executável, configuração, estado, runtime e unit systemd devem ser absolutos. Valores relativos como `s`, `./ai-bash-gen` ou `bin/ai-bash-gen` são recusados e o instalador solicita novamente o campo. Quando um runtime diferente do padrão é escolhido, ele é propagado para a unit através de `AI_BASH_GEN_RUNTIME_DIR` e também é usado na validação das rotas.
 
@@ -413,4 +417,4 @@ A validação pode ser executada sem iniciar o daemon:
 ai-bash-gen --config /etc/ai-bash-gen/config.yaml --check-dependencies
 ```
 
-O instalador detecta um `llama-server` existente, confirma suporte a Unix Domain Socket, exige um arquivo `.gguf`, copia ambos para caminhos controlados pelo serviço e executa a mesma validação Go usando o usuário de serviço. Se qualquer dependência estiver ausente ou incompatível, a instalação/inicialização é interrompida antes da publicação das rotas.
+O instalador detecta um `llama-server` existente e confirma suporte a Unix Domain Socket. Se ele estiver ausente, o próprio instalador oferece compilar e instalar a versão fixada do `llama.cpp` antes de prosseguir. Depois disso, exige um arquivo `.gguf`, copia o runtime e o modelo para caminhos controlados pelo serviço e executa a mesma validação Go usando o usuário de serviço. Se qualquer dependência estiver ausente ou incompatível, a instalação/inicialização é interrompida antes da publicação das rotas.

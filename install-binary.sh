@@ -14,7 +14,12 @@ DEFAULT_UNIT_PATH="/etc/systemd/system/${APP_NAME}.service"
 DEFAULT_LLAMA_TARGET="/usr/local/lib/${APP_NAME}/llama-server"
 DEFAULT_MODEL_DIR="/var/lib/${APP_NAME}/models"
 
+LLAMA_CPP_REPOSITORY="https://github.com/ggml-org/llama.cpp.git"
+LLAMA_CPP_VERSION="v0.5.0"
+LLAMA_CPP_COMMIT="7fe450e19305b828c199d602c23a8337aaa1f03b"
+
 REQUIRED_DEBIAN_PACKAGES=(bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils findutils)
+LLAMA_CPP_BUILD_PACKAGES=(git cmake build-essential ca-certificates)
 
 C_RESET=""
 C_RED=""
@@ -55,6 +60,8 @@ Características:
   - cria usuário/grupo de serviço dedicados somente se solicitado;
   - só cria serviço systemd se o binário suportar --config;
   - verifica dependências Debian e oferece instalar pacotes ausentes;
+  - detecta o llama-server; se estiver ausente, oferece compilar e instalar llama.cpp automaticamente;
+  - usa a versão fixa v0.5.0 do llama.cpp para uma instalação reproduzível;
   - exige um llama-server compatível com Unix Socket e um modelo GGUF;
   - instala cópias controladas do llama-server e do modelo para o serviço;
   - valida as dependências novamente pelo próprio binário Go antes de iniciar;
@@ -127,12 +134,19 @@ ask_absolute_path() {
 
 detect_llama_default() {
   local candidate
+
+  if [[ -n "${AI_BASH_GEN_LLAMA_SERVER:-}" && -x "${AI_BASH_GEN_LLAMA_SERVER}" ]]; then
+    printf '%s\n' "${AI_BASH_GEN_LLAMA_SERVER}"
+    return 0
+  fi
+
   if command -v llama-server >/dev/null 2>&1; then
     command -v llama-server
     return 0
   fi
 
   for candidate in \
+    "$DEFAULT_LLAMA_TARGET" \
     "${HOME:-}/llama.cpp/build/bin/llama-server" \
     "/usr/local/bin/llama-server" \
     "/usr/bin/llama-server"
@@ -140,7 +154,7 @@ detect_llama_default() {
     [[ -n "$candidate" && -x "$candidate" ]] && { printf '%s\n' "$candidate"; return 0; }
   done
 
-  printf '%s\n' "/usr/local/bin/llama-server"
+  printf '%s\n' "$DEFAULT_LLAMA_TARGET"
 }
 
 validate_llama_source() {
@@ -255,34 +269,161 @@ package_installed() {
   dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -Fxq 'install ok installed'
 }
 
-ensure_debian_packages() {
+ensure_debian_package_list() {
+  local label="$1"
+  shift
   local package
+  local -a requested=("$@")
   local -a missing=()
 
   if ! command -v dpkg-query >/dev/null 2>&1; then
-    warn "dpkg-query não encontrado; validação de pacotes Debian será ignorada."
+    warn "dpkg-query não encontrado; não é possível validar os pacotes de $label."
     return 0
   fi
 
-  for package in "${REQUIRED_DEBIAN_PACKAGES[@]}"; do
+  for package in "${requested[@]}"; do
     package_installed "$package" || missing+=("$package")
   done
 
   if [[ ${#missing[@]} -eq 0 ]]; then
-    ok "dependências Debian instaladas: ${REQUIRED_DEBIAN_PACKAGES[*]}"
+    ok "$label disponíveis: ${requested[*]}"
     return 0
   fi
 
-  warn "pacotes Debian ausentes: ${missing[*]}"
+  warn "$label ausentes: ${missing[*]}"
   command -v apt-get >/dev/null 2>&1 || die "apt-get não encontrado; instale manualmente: ${missing[*]}"
 
-  ask_yes_no "Instalar os pacotes ausentes agora?" "Y" || {
-    die "dependências obrigatórias ausentes: ${missing[*]}"
+  ask_yes_no "Instalar os pacotes necessários para $label agora?" "Y" || {
+    die "dependências obrigatórias ausentes para $label: ${missing[*]}"
   }
 
   "${SUDO[@]}" apt-get update
   "${SUDO[@]}" apt-get install -y -- "${missing[@]}"
-  ok "dependências Debian instaladas."
+  ok "$label instaladas."
+}
+
+ensure_debian_packages() {
+  ensure_debian_package_list "dependências Debian do ai-bash-gen" "${REQUIRED_DEBIAN_PACKAGES[@]}"
+}
+
+llama_build_jobs() {
+  local jobs mem_kb
+  jobs="$(nproc 2>/dev/null || printf '1')"
+  [[ "$jobs" =~ ^[0-9]+$ ]] || jobs=1
+  (( jobs < 1 )) && jobs=1
+  (( jobs > 4 )) && jobs=4
+
+  mem_kb="$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null || true)"
+  if [[ "$mem_kb" =~ ^[0-9]+$ ]]; then
+    if (( mem_kb < 5000000 )); then
+      jobs=1
+    elif (( mem_kb < 10000000 && jobs > 2 )); then
+      jobs=2
+    fi
+  fi
+
+  printf '%s\n' "$jobs"
+}
+
+install_llama_cpp_from_source() {
+  local target="${1:-$DEFAULT_LLAMA_TARGET}"
+  local temp_dir source_dir build_dir built_binary jobs actual_commit
+  local rc=0
+
+  ensure_debian_package_list "compilação do llama.cpp" "${LLAMA_CPP_BUILD_PACKAGES[@]}"
+
+  command -v git >/dev/null 2>&1 || die "git não encontrado após instalação das dependências do llama.cpp."
+  command -v cmake >/dev/null 2>&1 || die "cmake não encontrado após instalação das dependências do llama.cpp."
+  command -v c++ >/dev/null 2>&1 || die "compilador C++ não encontrado após instalação de build-essential."
+
+  temp_dir="$(mktemp -d)"
+  source_dir="$temp_dir/llama.cpp"
+  build_dir="$source_dir/build"
+  jobs="$(llama_build_jobs)"
+
+  info "instalando llama.cpp $LLAMA_CPP_VERSION para fornecer llama-server."
+  info "fonte oficial: $LLAMA_CPP_REPOSITORY"
+  info "commit fixado: $LLAMA_CPP_COMMIT"
+  info "compilação CPU local: $jobs job(s); esta etapa pode levar alguns minutos."
+
+  set +e
+  (
+    set -Eeuo pipefail
+    export GIT_TERMINAL_PROMPT=0
+
+    git init -q "$source_dir"
+    git -C "$source_dir" remote add origin "$LLAMA_CPP_REPOSITORY"
+    git -C "$source_dir" fetch --quiet --depth 1 origin "refs/tags/$LLAMA_CPP_VERSION:refs/tags/$LLAMA_CPP_VERSION"
+    actual_commit="$(git -C "$source_dir" rev-list -n 1 "$LLAMA_CPP_VERSION")"
+    git -C "$source_dir" checkout --quiet --detach "$actual_commit"
+
+    [[ "$actual_commit" == "$LLAMA_CPP_COMMIT" ]] || {
+      echo "[ERRO] commit recebido do llama.cpp não corresponde ao commit fixado." >&2
+      exit 1
+    }
+
+    cmake -S "$source_dir" -B "$build_dir" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_SHARED_LIBS=OFF \
+      -DGGML_NATIVE=ON \
+      -DLLAMA_BUILD_COMMON=ON \
+      -DLLAMA_BUILD_TESTS=OFF \
+      -DLLAMA_BUILD_EXAMPLES=OFF \
+      -DLLAMA_BUILD_TOOLS=ON \
+      -DLLAMA_BUILD_SERVER=ON \
+      -DLLAMA_BUILD_APP=OFF \
+      -DLLAMA_BUILD_UI=OFF \
+      -DLLAMA_USE_PREBUILT_UI=OFF \
+      -DLLAMA_OPENSSL=OFF
+
+    cmake --build "$build_dir" --config Release --target llama-server -j "$jobs"
+
+    built_binary="$build_dir/bin/llama-server"
+    [[ -x "$built_binary" ]] || {
+      echo "[ERRO] compilação terminou sem gerar $built_binary" >&2
+      exit 1
+    }
+
+    "$built_binary" --help >/dev/null 2>&1
+    "${SUDO[@]}" install -d -o root -g root -m 0755 "$(dirname -- "$target")"
+    "${SUDO[@]}" install -o root -g root -m 0755 "$built_binary" "$target"
+  )
+  rc=$?
+  set -e
+
+  rm -rf -- "$temp_dir"
+
+  [[ "$rc" -eq 0 ]] || die "falha ao compilar/instalar llama.cpp $LLAMA_CPP_VERSION."
+  validate_llama_source "$target" || die "llama-server instalado, mas a validação de compatibilidade falhou: $target"
+
+  ok "llama.cpp $LLAMA_CPP_VERSION instalado: $target"
+}
+
+ensure_llama_server_available() {
+  local detected
+
+  detected="$(detect_llama_default)"
+  if validate_llama_source "$detected" >/dev/null 2>&1; then
+    LLAMA_SOURCE="$detected"
+    LLAMA_INSTALLATION_MODE="existing"
+    ok "llama-server compatível detectado: $LLAMA_SOURCE"
+    return 0
+  fi
+
+  warn "llama-server não foi encontrado ou não é compatível."
+  info "o ai-bash-gen usa o llama-server do projeto oficial llama.cpp."
+  info "o instalador pode baixar o código-fonte fixado em $LLAMA_CPP_VERSION e compilar somente o servidor para esta máquina."
+
+  if ask_yes_no "Instalar llama.cpp $LLAMA_CPP_VERSION agora?" "Y"; then
+    install_llama_cpp_from_source "$DEFAULT_LLAMA_TARGET"
+    LLAMA_SOURCE="$DEFAULT_LLAMA_TARGET"
+    LLAMA_INSTALLATION_MODE="installed"
+    return 0
+  fi
+
+  warn "a instalação automática do llama.cpp foi recusada."
+  LLAMA_SOURCE="$(ask_llama_source "$detected")"
+  LLAMA_INSTALLATION_MODE="manual"
 }
 
 detect_client_user() {
@@ -869,6 +1010,8 @@ Binário instalado : $BIN_TARGET
 Configuração       : $CONFIG_DIR
 Estado persistente : $STATE_DIR
 Runtime            : $RUNTIME_DIR
+llama.cpp versão   : $LLAMA_CPP_VERSION
+llama-server modo  : ${LLAMA_INSTALLATION_MODE:-unknown}
 llama-server origem: $LLAMA_SOURCE
 llama-server alvo  : $LLAMA_TARGET
 Modelo GGUF origem : $MODEL_SOURCE
@@ -901,6 +1044,7 @@ main() {
   check_debian_family
   setup_privilege_command
   ensure_debian_packages
+  ensure_llama_server_available
   load_existing_unit_defaults
 
   DEFAULT_BIN_SOURCE="${1:-$(detect_binary_default)}"
@@ -926,7 +1070,7 @@ main() {
   RUNTIME_DIR="$(ask_absolute_path 'Diretório de runtime' "$DEFAULT_RUNTIME_DIR" 'Diretório de runtime')"
   confirm_value "Diretório de runtime" "$RUNTIME_DIR"
 
-  LLAMA_SOURCE="$(ask_llama_source "$(detect_llama_default)")"
+  LLAMA_SOURCE="$(ask_llama_source "$LLAMA_SOURCE")"
   LLAMA_SOURCE="$(absolute_path "$LLAMA_SOURCE")"
   confirm_value "llama-server detectado" "$LLAMA_SOURCE"
 
