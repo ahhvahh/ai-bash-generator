@@ -1325,7 +1325,8 @@ create_systemd_unit() {
   cat >"$temp_unit" <<__UNIT__
 [Unit]
 Description=AI Bash Generator
-After=local-fs.target
+After=local-fs.target postgresql.service
+Requires=postgresql.service
 
 [Service]
 Type=simple
