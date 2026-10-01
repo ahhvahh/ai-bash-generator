@@ -1724,6 +1724,7 @@ main() {
 
   if [[ "$CREATE_SERVICE_ACCOUNT" == "yes" ]]; then
     create_service_account "$SERVICE_USER" "$SERVICE_GROUP" "$STATE_DIR"
+    setup_postgresql_catalog "$SERVICE_USER"
   fi
 
   if [[ -n "$CLIENT_USER" ]]; then
@@ -1737,7 +1738,9 @@ main() {
   ok "binário instalado validado: $INSTALLED_VERSION"
   prepare_directories "$CONFIG_DIR" "$STATE_DIR" "$RUNTIME_DIR" "$SERVICE_USER" "$SERVICE_GROUP" "$CREATE_SERVICE_ACCOUNT"
 
-  install_runtime_assets "$LLAMA_SOURCE" "$LLAMA_TARGET" "$MODEL_SOURCE" "$MODEL_TARGET" \
+  install_runtime_assets "$LLAMA_SOURCE" "$LLAMA_TARGET" "$NORMALIZER_MODEL_SOURCE" "$NORMALIZER_MODEL_TARGET" \
+    "$SERVICE_USER" "$SERVICE_GROUP" "$CREATE_SERVICE_ACCOUNT"
+  install_runtime_assets "$LLAMA_SOURCE" "$LLAMA_TARGET" "$GENERATOR_MODEL_SOURCE" "$GENERATOR_MODEL_TARGET" \
     "$SERVICE_USER" "$SERVICE_GROUP" "$CREATE_SERVICE_ACCOUNT"
 
   if [[ "$INSTALL_SYSTEMD" == "yes" ]]; then
@@ -1747,7 +1750,8 @@ main() {
       CREATE_BOOTSTRAP_CONFIG="yes"
     fi
     if [[ "$CREATE_BOOTSTRAP_CONFIG" == "yes" ]]; then
-      create_bootstrap_config "$CONFIG_DIR" "$SERVICE_GROUP" "$LLAMA_TARGET" "$MODEL_TARGET"
+      create_bootstrap_config "$CONFIG_DIR" "$SERVICE_GROUP" "$LLAMA_TARGET" \
+        "$NORMALIZER_MODEL_TARGET" "$GENERATOR_MODEL_TARGET" "$SERVICE_USER"
     else
       migrate_managed_runtime_defaults "$CONFIG_DIR/config.yaml"
     fi
