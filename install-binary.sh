@@ -66,6 +66,7 @@ Uso:
 Opções:
   --force   aplica todas as opções padrão sem perguntas. Instala dependências,
             llama.cpp, modelo padrão, systemd e inicia/habilita o serviço.
+            Sem caminho de binário, procura primeiro ai-bash-gen ao lado deste script.
 
 Características:
   - exige terminal interativo, exceto com --force;
@@ -769,6 +770,15 @@ detect_binary_default() {
   local root arch candidate
   root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 
+  # Em produção, install-binary.sh e o binário publicável normalmente ficam
+  # lado a lado. Essa é a primeira opção quando nenhum caminho é informado.
+  candidate="$root/$APP_NAME"
+  if [[ -f "$candidate" ]]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  # Mantém compatibilidade com execução diretamente a partir do clone fonte.
   case "$(uname -m 2>/dev/null || true)" in
     x86_64|amd64) arch="amd64" ;;
     i386|i486|i586|i686) arch="386" ;;
@@ -783,13 +793,12 @@ detect_binary_default() {
 
   if [[ -n "$arch" ]]; then
     candidate="$root/bin/$arch/$APP_NAME"
-    [[ -f "$candidate" ]] && { printf '%s\n' "$candidate"; return; }
+    [[ -f "$candidate" ]] && { printf '%s\n' "$candidate"; return 0; }
   fi
 
-  candidate="$root/$APP_NAME"
-  [[ -f "$candidate" ]] && { printf '%s\n' "$candidate"; return; }
-
-  printf './bin/amd64/%s\n' "$APP_NAME"
+  # Retorna o caminho esperado ao lado do instalador para que a mensagem de
+  # erro posterior seja objetiva e independente do diretório corrente.
+  printf '%s/%s\n' "$root" "$APP_NAME"
 }
 
 validate_binary() {

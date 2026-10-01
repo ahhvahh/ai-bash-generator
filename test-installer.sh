@@ -41,6 +41,20 @@ pass "catálogo define Qwen3.5-0.8B Q4_0 como padrão"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+local_installer_dir="$tmp/local-installer"
+mkdir -p "$local_installer_dir"
+cp "$ROOT/install-binary.sh" "$local_installer_dir/install-binary.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$local_installer_dir/ai-bash-gen"
+chmod +x "$local_installer_dir/ai-bash-gen"
+detected_local_binary="$(
+  AI_BASH_GEN_INSTALLER_LIB_ONLY=1 bash -c '
+    source "$1"
+    detect_binary_default
+  ' _ "$local_installer_dir/install-binary.sh"
+)"
+[[ "$detected_local_binary" == "$local_installer_dir/ai-bash-gen" ]] ||   fail "instalador não priorizou binário ao lado do próprio script: $detected_local_binary"
+pass "instalador encontra binário ao lado de install-binary.sh sem argumento"
+
 fake_llama="$tmp/llama-server"
 cat >"$fake_llama" <<'EOF'
 #!/usr/bin/env bash
