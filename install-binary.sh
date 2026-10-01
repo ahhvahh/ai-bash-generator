@@ -66,6 +66,7 @@ Uso:
 Opções:
   --force   aplica todas as opções padrão sem perguntas. Instala dependências,
             llama.cpp, modelo padrão, systemd e inicia/habilita o serviço.
+            Sem caminho de binário, procura primeiro ai-bash-gen ao lado deste script.
 
 Características:
   - exige terminal interativo, exceto com --force;
