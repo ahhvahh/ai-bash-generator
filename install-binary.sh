@@ -13,6 +13,11 @@ DEFAULT_SERVICE_GROUP="${APP_NAME}"
 DEFAULT_UNIT_PATH="/etc/systemd/system/${APP_NAME}.service"
 DEFAULT_LLAMA_TARGET="/usr/local/lib/${APP_NAME}/llama-server"
 DEFAULT_MODEL_DIR="/var/lib/${APP_NAME}/models"
+DEFAULT_CONTEXT_SIZE=32768
+DEFAULT_STARTUP_TIMEOUT="2m"
+DEFAULT_REQUEST_TIMEOUT="10m"
+DEFAULT_MAX_TOKENS=4096
+DEFAULT_TEMPERATURE="0.2"
 
 LLAMA_CPP_REPOSITORY="https://github.com/ggml-org/llama.cpp.git"
 LLAMA_CPP_VERSION="v0.5.0"
@@ -983,16 +988,78 @@ create_bootstrap_config() {
 llama:
   binary: "$llama_binary"
   model: "$model_file"
-  context_size: 2048
-  startup_timeout: 2m
-  request_timeout: 3m
-  max_tokens: 1536
-  temperature: 0.2
+  context_size: $DEFAULT_CONTEXT_SIZE
+  startup_timeout: $DEFAULT_STARTUP_TIMEOUT
+  request_timeout: $DEFAULT_REQUEST_TIMEOUT
+  max_tokens: $DEFAULT_MAX_TOKENS
+  temperature: $DEFAULT_TEMPERATURE
 __CONFIG__
 
   "${SUDO[@]}" install -o root -g "$group" -m 0640 "$temp_config" "$config_file"
   rm -f -- "$temp_config"
   ok "configuração bootstrap criada em $config_file"
+}
+
+migrate_managed_runtime_defaults() {
+  local config_file="$1"
+  local temp_file backup changed=0
+
+  [[ -f "$config_file" ]] || return 0
+  grep -Fq '# ai-bash-gen - configuração bootstrap' "$config_file" 2>/dev/null || {
+    info "configuração personalizada detectada; parâmetros de contexto serão preservados: $config_file"
+    return 0
+  }
+
+  if ! grep -Eq '^[[:space:]]*context_size:[[:space:]]*2048([[:space:]]|$)' "$config_file" &&
+     ! grep -Eq '^[[:space:]]*request_timeout:[[:space:]]*3m([[:space:]]|$)' "$config_file" &&
+     ! grep -Eq '^[[:space:]]*max_tokens:[[:space:]]*1536([[:space:]]|$)' "$config_file"; then
+    info "configuração gerenciada já usa parâmetros atuais/customizados; nenhuma migração necessária."
+    return 0
+  fi
+
+  warn "configuração gerenciada usa parâmetros antigos de contexto/geração."
+  info "novos padrões: context_size=$DEFAULT_CONTEXT_SIZE request_timeout=$DEFAULT_REQUEST_TIMEOUT max_tokens=$DEFAULT_MAX_TOKENS"
+
+  ask_yes_no "Atualizar parâmetros antigos para os novos padrões?" "Y" || {
+    info "parâmetros existentes preservados por escolha do usuário."
+    return 0
+  }
+
+  temp_file="$(mktemp)"
+  awk     -v context="$DEFAULT_CONTEXT_SIZE"     -v request_timeout="$DEFAULT_REQUEST_TIMEOUT"     -v max_tokens="$DEFAULT_MAX_TOKENS" '
+      /^[[:space:]]*context_size:[[:space:]]*2048([[:space:]]|$)/ {
+        sub(/2048([[:space:]]*)$/, context "\\1")
+        changed=1
+      }
+      /^[[:space:]]*request_timeout:[[:space:]]*3m([[:space:]]|$)/ {
+        sub(/3m([[:space:]]*)$/, request_timeout "\\1")
+        changed=1
+      }
+      /^[[:space:]]*max_tokens:[[:space:]]*1536([[:space:]]|$)/ {
+        sub(/1536([[:space:]]*)$/, max_tokens "\\1")
+        changed=1
+      }
+      { print }
+      END { if (changed) exit 0; exit 3 }
+    ' "$config_file" >"$temp_file"
+  awk_rc=$?
+
+  if [[ "$awk_rc" -eq 3 ]]; then
+    rm -f -- "$temp_file"
+    info "nenhuma alteração de parâmetros foi necessária."
+    return 0
+  elif [[ "$awk_rc" -ne 0 ]]; then
+    rm -f -- "$temp_file"
+    die "falha ao preparar migração da configuração: $config_file"
+  fi
+
+  backup="${config_file}.backup.$(date +%Y%m%d%H%M%S)"
+  "${SUDO[@]}" cp -a -- "$config_file" "$backup"
+  "${SUDO[@]}" cp -- "$temp_file" "$config_file"
+  rm -f -- "$temp_file"
+
+  ok "configuração atualizada para context_size=$DEFAULT_CONTEXT_SIZE, request_timeout=$DEFAULT_REQUEST_TIMEOUT, max_tokens=$DEFAULT_MAX_TOKENS"
+  info "backup da configuração: $backup"
 }
 
 install_runtime_assets() {
@@ -1460,6 +1527,8 @@ main() {
     fi
     if [[ "$CREATE_BOOTSTRAP_CONFIG" == "yes" ]]; then
       create_bootstrap_config "$CONFIG_DIR" "$SERVICE_GROUP" "$LLAMA_TARGET" "$MODEL_TARGET"
+    else
+      migrate_managed_runtime_defaults "$CONFIG_DIR/config.yaml"
     fi
 
     validate_runtime_dependencies "$BIN_TARGET" "$CONFIG_DIR/config.yaml" "$SERVICE_USER" "$CREATE_SERVICE_ACCOUNT"
