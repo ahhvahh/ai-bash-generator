@@ -24,6 +24,30 @@ pass "recusa caminhos relativos"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
+
+fake_llama="$tmp/llama-server"
+cat >"$fake_llama" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "--help" ]]; then
+  echo '  --host HOST bind to UNIX socket when HOST ends with .sock'
+  exit 0
+fi
+exit 0
+EOF
+chmod +x "$fake_llama"
+validate_llama_source "$fake_llama" || fail "llama-server compatível foi recusado"
+pass "detecta llama-server compatível com Unix Socket"
+
+fake_model="$tmp/model.gguf"
+printf 'GGUF-test\n' >"$fake_model"
+validate_model_source "$fake_model" || fail "modelo GGUF válido foi recusado"
+pass "detecta modelo GGUF válido"
+
+if validate_model_source "$tmp/model.bin" >/dev/null 2>&1; then
+  fail "modelo sem extensão GGUF foi aceito"
+fi
+pass "recusa modelo sem extensão GGUF"
+
 fake="$tmp/fake-ai-bash-gen"
 cat >"$fake" <<'EOF'
 #!/usr/bin/env bash
