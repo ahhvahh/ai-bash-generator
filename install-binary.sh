@@ -14,7 +14,7 @@ DEFAULT_UNIT_PATH="/etc/systemd/system/${APP_NAME}.service"
 DEFAULT_LLAMA_TARGET="/usr/local/lib/${APP_NAME}/llama-server"
 DEFAULT_MODEL_DIR="/var/lib/${APP_NAME}/models"
 
-REQUIRED_DEBIAN_PACKAGES=(bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils)
+REQUIRED_DEBIAN_PACKAGES=(bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils findutils)
 
 C_RESET=""
 C_RED=""
