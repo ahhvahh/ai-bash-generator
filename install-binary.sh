@@ -1689,7 +1689,27 @@ main() {
   if [[ "$INSTALL_SYSTEMD" == "yes" ]]; then
     if [[ -e "$CONFIG_DIR/config.yaml" ]]; then
       if grep -Fq '# ai-bash-gen - configuração bootstrap' "$CONFIG_DIR/config.yaml" 2>/dev/null &&
-         { ! grep -Eq '^agents:[[:space:]]*
+         { ! grep -Eq '^agents:[[:space:]]*$' "$CONFIG_DIR/config.yaml" ||
+           ! grep -Eq '^database:[[:space:]]*$' "$CONFIG_DIR/config.yaml"; }; then
+        warn "foi detectada uma configuração bootstrap anterior ao pipeline multiagente/PostgreSQL."
+        if ask_yes_no "Migrar substituindo pela configuração funcional multiagente?" "Y"; then
+          CREATE_BOOTSTRAP_CONFIG="replace"
+        else
+          CREATE_BOOTSTRAP_CONFIG="existing"
+        fi
+      else
+        CREATE_BOOTSTRAP_CONFIG="existing"
+      fi
+      info "configuração existente: $CONFIG_DIR/config.yaml"
+    elif ask_yes_no "config.yaml não existe. Criar configuração funcional?" "Y"; then
+      CREATE_BOOTSTRAP_CONFIG="yes"
+    else
+      die "o serviço requer $CONFIG_DIR/config.yaml."
+    fi
+    confirm_value "Configuração bootstrap" "$CREATE_BOOTSTRAP_CONFIG"
+  fi
+
+  START_SERVICE="no"
   ENABLE_SERVICE="no"
   if [[ "$INSTALL_SYSTEMD" == "yes" ]]; then
     if ask_yes_no "Iniciar/reiniciar o serviço ao final da instalação?" "Y"; then
