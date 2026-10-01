@@ -26,14 +26,31 @@ func Validate(cfg config.Config) error {
 		problems = append(problems, fmt.Sprintf("bash indisponível: %v", err))
 	}
 
-	if err := validateExecutable(cfg.Llama.Binary); err != nil {
-		problems = append(problems, fmt.Sprintf("llama-server inválido: %v", err))
-	} else if err := validateLlamaServer(cfg.Llama.Binary); err != nil {
-		problems = append(problems, err.Error())
+	checkedBinaries := map[string]bool{}
+	for label, agent := range map[string]config.LlamaConfig{
+		"request-normalizer": cfg.NormalizerConfig(),
+		"bash-generator":     cfg.GeneratorConfig(),
+	} {
+		if !checkedBinaries[agent.Binary] {
+			if err := validateExecutable(agent.Binary); err != nil {
+				problems = append(problems, fmt.Sprintf("%s llama-server inválido: %v", label, err))
+			} else if err := validateLlamaServer(agent.Binary); err != nil {
+				problems = append(problems, fmt.Sprintf("%s: %v", label, err))
+			}
+			checkedBinaries[agent.Binary] = true
+		}
+		if err := validateModel(agent.Model); err != nil {
+			problems = append(problems, fmt.Sprintf("%s modelo GGUF inválido: %v", label, err))
+		}
 	}
 
-	if err := validateModel(cfg.Llama.Model); err != nil {
-		problems = append(problems, fmt.Sprintf("modelo GGUF inválido: %v", err))
+	if cfg.Database.Required {
+		psql, err := exec.LookPath("psql")
+		if err != nil {
+			problems = append(problems, "psql não encontrado no PATH; PostgreSQL client é obrigatório")
+		} else if err := probeExecutable(psql, "--version"); err != nil {
+			problems = append(problems, fmt.Sprintf("psql indisponível: %v", err))
+		}
 	}
 
 	if len(problems) != 0 {
