@@ -7,6 +7,18 @@ import (
 	"time"
 )
 
+func TestRuntimeDefaultsMatchLaptopProfile(t *testing.T) {
+	if DefaultContextSize != 32768 {
+		t.Fatalf("DefaultContextSize=%d want=32768", DefaultContextSize)
+	}
+	if DefaultMaxTokens != 4096 {
+		t.Fatalf("DefaultMaxTokens=%d want=4096", DefaultMaxTokens)
+	}
+	if DefaultRequestTimeout != 10*time.Minute {
+		t.Fatalf("DefaultRequestTimeout=%s want=10m", DefaultRequestTimeout)
+	}
+}
+
 func TestLoadYAMLRuntimeConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
