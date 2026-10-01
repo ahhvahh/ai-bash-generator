@@ -12,24 +12,32 @@ const (
 )
 
 type Paths struct {
-	ConfigDir      string
-	StateDir       string
-	RuntimeDir     string
-	RoutesDir      string
-	LlamaSocket    string
-	GenerateSocket string
+	ConfigDir         string
+	StateDir          string
+	RuntimeDir        string
+	RoutesDir         string
+	LlamaSocket       string
+	NormalizerSocket  string
+	GeneratorSocket   string
+	GenerateSocket    string
 }
 
 func DefaultPaths() Paths {
-	runtimeDir:=DefaultRuntimeDir
-	if override:=os.Getenv("AI_BASH_GEN_RUNTIME_DIR");override!=""{ runtimeDir=filepath.Clean(override) }
-	routesDir:=filepath.Join(runtimeDir,"routes")
+	runtimeDir := DefaultRuntimeDir
+	if override := os.Getenv("AI_BASH_GEN_RUNTIME_DIR"); override != "" {
+		runtimeDir = filepath.Clean(override)
+	}
+	routesDir := filepath.Join(runtimeDir, "routes")
+	normalizerSocket := filepath.Join(runtimeDir, "internal", "request-normalizer.sock")
+	generatorSocket := filepath.Join(runtimeDir, "internal", "bash-generator.sock")
 	return Paths{
-		ConfigDir: DefaultConfigDir,
-		StateDir: DefaultStateDir,
-		RuntimeDir: runtimeDir,
-		RoutesDir: routesDir,
-		LlamaSocket: filepath.Join(runtimeDir,"internal","llama.sock"),
-		GenerateSocket: filepath.Join(routesDir,"generate.sock"),
+		ConfigDir:        DefaultConfigDir,
+		StateDir:         DefaultStateDir,
+		RuntimeDir:       runtimeDir,
+		RoutesDir:        routesDir,
+		LlamaSocket:      generatorSocket,
+		NormalizerSocket: normalizerSocket,
+		GeneratorSocket:  generatorSocket,
+		GenerateSocket:   filepath.Join(routesDir, "generate.sock"),
 	}
 }
