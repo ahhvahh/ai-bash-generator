@@ -237,6 +237,22 @@ if [[ "${AI_BASH_GEN_TEST_PRIVILEGED:-0}" == "1" ]]; then
   sudo groupadd "$test_group"
   SUDO=(sudo)
 
+  fake_dep_bin="$tmp/fake-dependency-check"
+  fake_dep_config="$tmp/fake-config.yaml"
+  cat >"$fake_dep_bin" <<'EOF'
+#!/usr/bin/env bash
+printf 'dependências: OK\n'
+exit 0
+EOF
+  chmod +x "$fake_dep_bin"
+  : >"$fake_dep_config"
+
+  saved_path="$PATH"
+  PATH="/usr/bin:/bin"
+  validate_runtime_dependencies "$fake_dep_bin" "$fake_dep_config" "$current_user" "yes"
+  PATH="$saved_path"
+  pass "validação runtime resolve runuser mesmo fora do PATH do usuário"
+
   if user_has_registered_group "$current_user" "$test_group"; then
     fail "grupo temporário já aparece antes do cadastro"
   fi
