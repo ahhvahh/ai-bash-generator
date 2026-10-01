@@ -290,7 +290,9 @@ O contrato está em `proto/ai_bash_gen/v1/generation_service.proto`. Uma conexã
 
 O cliente oficial está no repositório `ai-bash-generator-client`. O cliente é responsável por gravar o artefato no filesystem do usuário; o daemon retorna somente `filename`, conteúdo e SHA-256.
 
-Estado atual: o transporte Unix Socket e o streaming de progresso estão implementados. Enquanto os estágios LLM ainda não estiverem conectados, o endpoint retorna explicitamente `PIPELINE_NOT_IMPLEMENTED`; não é produzido um script fictício.
+Estado atual: o transporte Unix Socket, o streaming de progresso e um pipeline mínimo funcional estão implementados. O daemon valida as dependências antes de publicar `generate.sock`, inicia o `llama-server` em `/run/ai-bash-gen/internal/llama.sock`, aguarda `/health` ficar pronto, gera o Bash via `/v1/chat/completions`, valida a sintaxe com `bash -n` e retorna o artefato ao cliente.
+
+O estágio `search_capabilities` ainda opera em modo mínimo, sem catálogo MCP/PostgreSQL; a integração completa do catálogo continua sendo uma evolução separada.
 
 
 ## Build, instalação e testes de aceitação
@@ -390,4 +392,25 @@ Casos atuais:
 9. sincronização segura com `rsync --dry-run`;
 10. backup robusto com `set -Eeuo pipefail`, `trap`, `mktemp`, `tar` e `sha256sum`.
 
-No estado atual do projeto, o pipeline LLM ainda não está conectado. Nesse caso o smoke test termina com código `3` e informa `PIPELINE_NOT_IMPLEMENTED`. Isso representa um bloqueio conhecido, não uma geração aprovada.
+O smoke test agora espera o pipeline funcional. Se o `llama-server`, o modelo GGUF ou o `bash` não estiverem disponíveis, o daemon encerra antes de criar `generate.sock`.
+
+A configuração mínima é:
+
+```yaml
+llama:
+  binary: /usr/local/lib/ai-bash-gen/llama-server
+  model: /var/lib/ai-bash-gen/models/model.gguf
+  context_size: 2048
+  startup_timeout: 2m
+  request_timeout: 3m
+  max_tokens: 1536
+  temperature: 0.2
+```
+
+A validação pode ser executada sem iniciar o daemon:
+
+```bash
+ai-bash-gen --config /etc/ai-bash-gen/config.yaml --check-dependencies
+```
+
+O instalador detecta um `llama-server` existente, confirma suporte a Unix Domain Socket, exige um arquivo `.gguf`, copia ambos para caminhos controlados pelo serviço e executa a mesma validação Go usando o usuário de serviço. Se qualquer dependência estiver ausente ou incompatível, a instalação/inicialização é interrompida antes da publicação das rotas.
