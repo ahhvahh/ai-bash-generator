@@ -75,7 +75,14 @@ func (r *Runner) Generate(ctx context.Context, request protocol.GenerateRequest,
 	if target == protocol.StageUnspecified {
 		target = protocol.StageBashOutput
 	}
-	if target < protocol.StageRequestNormalizer || target > protocol.StageBashOutput {
+	switch target {
+	case protocol.StageRequestNormalizer,
+		protocol.StageNormalizedRequest,
+		protocol.StageSearchCapabilities,
+		protocol.StageBashGenerator,
+		protocol.StageValidation,
+		protocol.StageBashOutput:
+	default:
 		return protocol.BashArtifact{}, fmt.Errorf("target_stage inválido: %d", target)
 	}
 
@@ -88,12 +95,20 @@ func (r *Runner) Generate(ctx context.Context, request protocol.GenerateRequest,
 		"max_generation_attempts", maxGenerationAttempts,
 	)
 
-	normalized, err := r.runNormalizer(ctx, request, progress, logger)
+	rawNormalized, err := r.runNormalizer(ctx, request, progress, logger)
 	if err != nil {
 		return protocol.BashArtifact{}, err
 	}
 	if target == protocol.StageRequestNormalizer {
-		return stageArtifact("request-normalizer.textproto", normalized.Raw), nil
+		return stageArtifact("request-normalizer.textproto", rawNormalized), nil
+	}
+
+	normalized, err := r.validateNormalizedRequest(rawNormalized, progress, logger)
+	if err != nil {
+		return protocol.BashArtifact{}, err
+	}
+	if target == protocol.StageNormalizedRequest {
+		return stageArtifact("normalized-request.textproto", normalized.Raw), nil
 	}
 	if normalized.Status != "NORMALIZATION_STATUS_READY" {
 		return protocol.BashArtifact{}, fmt.Errorf("normalização não está pronta: status=%s", normalized.Status)
@@ -172,17 +187,17 @@ func (r *Runner) runNormalizer(
 		Info(string, ...any)
 		Error(string, ...any)
 	},
-) (NormalizedRequest, error) {
-	if err := progress(protocol.StageRequestNormalizer, protocol.StateStarted, "normalizando solicitação com request-normalizer"); err != nil {
-		return NormalizedRequest{}, err
+) (string, error) {
+	if err := progress(protocol.StageRequestNormalizer, protocol.StateStarted, "executando request-normalizer"); err != nil {
+		return "", err
 	}
 
 	if r.legacy {
-		normalized := passthroughNormalized(request.Text)
-		if err := progress(protocol.StageRequestNormalizer, protocol.StateCompleted, "solicitação normalizada (modo compatibilidade)"); err != nil {
-			return NormalizedRequest{}, err
+		raw := passthroughNormalized(request.Text).Raw
+		if err := progress(protocol.StageRequestNormalizer, protocol.StateCompleted, "request-normalizer concluído (modo compatibilidade)"); err != nil {
+			return "", err
 		}
-		return normalized, nil
+		return raw, nil
 	}
 
 	started := time.Now()
@@ -196,15 +211,49 @@ func (r *Runner) runNormalizer(
 	raw, err := r.normalizer.Complete(callCtx, normalizerSystemPrompt, userRequestTextProto(request.Text))
 	if err != nil {
 		_ = progress(protocol.StageRequestNormalizer, protocol.StateFailed, err.Error())
-		return NormalizedRequest{}, fmt.Errorf("request-normalizer: %w", err)
+		return "", fmt.Errorf("request-normalizer: %w", err)
 	}
+	raw = cleanTextProto(raw)
+	if strings.TrimSpace(raw) == "" {
+		err := errors.New("request-normalizer retornou conteúdo vazio")
+		_ = progress(protocol.StageRequestNormalizer, protocol.StateFailed, err.Error())
+		return "", err
+	}
+
+	logger.Info("request-normalizer respondeu",
+		"event", "normalizer_llm_response",
+		"duration_ms", time.Since(started).Milliseconds(),
+		"output_chars", len([]rune(raw)),
+	)
+	if err := progress(protocol.StageRequestNormalizer, protocol.StateCompleted, "TextProto produzido pelo request-normalizer"); err != nil {
+		return "", err
+	}
+	return raw, nil
+}
+
+func (r *Runner) validateNormalizedRequest(
+	raw string,
+	progress func(protocol.Stage, protocol.ProgressState, string) error,
+	logger interface {
+		Info(string, ...any)
+		Error(string, ...any)
+	},
+) (NormalizedRequest, error) {
+	if err := progress(protocol.StageNormalizedRequest, protocol.StateStarted, "validando NormalizedRequest"); err != nil {
+		return NormalizedRequest{}, err
+	}
+	started := time.Now()
 	normalized, err := parseNormalizedRequest(raw)
 	if err != nil {
-		_ = progress(protocol.StageRequestNormalizer, protocol.StateFailed, err.Error())
+		_ = progress(protocol.StageNormalizedRequest, protocol.StateFailed, err.Error())
+		logger.Error("NormalizedRequest inválida",
+			"event", "normalized_request_validation_failed",
+			"error", err,
+		)
 		return NormalizedRequest{}, err
 	}
 
-	logger.Info("solicitação normalizada",
+	logger.Info("NormalizedRequest validada",
 		"event", "request_normalized",
 		"duration_ms", time.Since(started).Milliseconds(),
 		"normalization_status", normalized.Status,
@@ -213,7 +262,7 @@ func (r *Runner) runNormalizer(
 		"normalized_chars", len([]rune(normalized.Raw)),
 	)
 	message := fmt.Sprintf("status=%s tasks=%d", normalized.Status, len(normalized.Tasks))
-	if err := progress(protocol.StageRequestNormalizer, protocol.StateCompleted, message); err != nil {
+	if err := progress(protocol.StageNormalizedRequest, protocol.StateCompleted, message); err != nil {
 		return NormalizedRequest{}, err
 	}
 	return normalized, nil
