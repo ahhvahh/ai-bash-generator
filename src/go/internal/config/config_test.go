@@ -65,8 +65,7 @@ func TestLoadJSONCompatibleConfig(t *testing.T) {
 func TestLoadRejectsMissingRuntimeDependencies(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(path, []byte("# configuração antiga
-"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("# configuração antiga\\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Load(path); err == nil {
