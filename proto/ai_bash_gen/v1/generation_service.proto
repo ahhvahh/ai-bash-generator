@@ -13,6 +13,8 @@ enum ProcessingStage {
   PROCESSING_STAGE_BASH_GENERATOR = 3;
   PROCESSING_STAGE_VALIDATION = 4;
   PROCESSING_STAGE_BASH_OUTPUT = 5;
+  // Appended to preserve the existing wire values of stages 1..5.
+  PROCESSING_STAGE_NORMALIZED_REQUEST = 6;
 }
 
 enum ProgressState {
