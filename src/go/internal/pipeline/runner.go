@@ -414,7 +414,7 @@ func stageArtifact(filename, content string) protocol.BashArtifact {
 }
 
 func buildGeneratorInput(normalized NormalizedRequest, search catalog.SearchResult) string {
-	return fmt.Sprintf(\`NormalizedRequest:
+	return fmt.Sprintf(`NormalizedRequest:
 %s
 
 SearchCapabilitiesResponse:
@@ -422,7 +422,7 @@ SearchCapabilitiesResponse:
 
 Generate the Bash source that fulfills the normalized request.
 Capability candidates are discovery hints. Do not claim to reuse an implementation unless its implementation was actually supplied.
-Preserve every normalized task and requested constraint.\`,
+Preserve every normalized task and requested constraint.`,
 		normalized.Raw,
 		search.FormatTextProto(),
 	)
@@ -433,9 +433,9 @@ func buildRepairPrompt(originalRequest string, validationErr error) string {
 	if validationErr != nil {
 		errorText = truncateForPrompt(validationErr.Error(), 1200)
 	}
-	return fmt.Sprintf(\`The previous Bash generation for this request was invalid.
+	return fmt.Sprintf(`The previous Bash generation for this request was invalid.
 
-Original normalized request and capability context:
+Original request:
 %s
 
 bash -n validation error:
@@ -446,7 +446,7 @@ Return only valid Bash source code.
 Keep it focused on the request.
 Do not repeat the malformed previous structure.
 Make sure the result passes: bash -n
-\`, originalRequest, errorText)
+`, originalRequest, errorText)
 }
 
 func truncateForPrompt(value string, maxRunes int) string {
@@ -467,13 +467,13 @@ func validateBash(ctx context.Context, content string) error {
 
 func cleanGeneratedBash(content string) string {
 	content = strings.TrimSpace(content)
-	if strings.HasPrefix(content, "\`\`\`") {
+	if strings.HasPrefix(content, "```") {
 		if i := strings.IndexByte(content, '\n'); i >= 0 {
 			content = content[i+1:]
 		}
 		content = strings.TrimSpace(content)
-		if strings.HasSuffix(content, "\`\`\`") {
-			content = strings.TrimSpace(strings.TrimSuffix(content, "\`\`\`"))
+		if strings.HasSuffix(content, "```") {
+			content = strings.TrimSpace(strings.TrimSuffix(content, "```"))
 		}
 	}
 	if i := strings.Index(content, "#!"); i > 0 {
@@ -488,7 +488,7 @@ func cleanGeneratedBash(content string) string {
 	return content
 }
 
-const generatorSystemPrompt = \`You are the bash-generator for ai-bash-gen.
+const generatorSystemPrompt = `You are the bash-generator for ai-bash-gen.
 
 The user request has already been normalized by another agent.
 You may receive capability candidate summaries discovered in PostgreSQL.
@@ -508,4 +508,4 @@ Rules:
 - Avoid destructive operations unless the request explicitly requires them.
 - Keep the script focused on the requested task.
 - The returned source must pass bash -n.
-\`
+`
