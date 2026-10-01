@@ -1612,11 +1612,24 @@ main() {
   confirm_value "Destino do llama-server" "$LLAMA_TARGET"
 
   select_or_download_model "$STATE_DIR"
-  MODEL_SOURCE="$(absolute_path "$MODEL_SOURCE")"
-  confirm_value "Modelo GGUF selecionado" "$MODEL_SOURCE"
+  NORMALIZER_MODEL_SOURCE="$(absolute_path "$MODEL_SOURCE")"
+  NORMALIZER_MODEL_INSTALLATION_MODE="$MODEL_INSTALLATION_MODE"
+  confirm_value "Modelo GGUF do request-normalizer" "$NORMALIZER_MODEL_SOURCE"
 
-  MODEL_TARGET="$STATE_DIR/models/$(basename -- "$MODEL_SOURCE")"
-  confirm_value "Destino controlado do modelo GGUF" "$MODEL_TARGET"
+  NORMALIZER_MODEL_TARGET="$STATE_DIR/models/$(basename -- "$NORMALIZER_MODEL_SOURCE")"
+  confirm_value "Destino controlado do request-normalizer" "$NORMALIZER_MODEL_TARGET"
+
+  select_or_download_generator_model "$STATE_DIR"
+  GENERATOR_MODEL_SOURCE="$(absolute_path "$GENERATOR_MODEL_SOURCE")"
+  confirm_value "Modelo GGUF do bash-generator" "$GENERATOR_MODEL_SOURCE"
+
+  GENERATOR_MODEL_TARGET="$STATE_DIR/models/$(basename -- "$GENERATOR_MODEL_SOURCE")"
+  confirm_value "Destino controlado do bash-generator" "$GENERATOR_MODEL_TARGET"
+
+  # Compatibilidade com variáveis históricas do instalador.
+  MODEL_SOURCE="$GENERATOR_MODEL_SOURCE"
+  MODEL_TARGET="$GENERATOR_MODEL_TARGET"
+  MODEL_INSTALLATION_MODE="$GENERATOR_MODEL_INSTALLATION_MODE"
 
   SERVICE_USER="$(ask_value 'Usuário de serviço' "$DEFAULT_SERVICE_USER")"
   confirm_value "Usuário de serviço" "$SERVICE_USER"
