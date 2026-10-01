@@ -9,17 +9,23 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/ahhvahh/ai-bash-generator/internal/buildinfo"
 	"github.com/ahhvahh/ai-bash-generator/internal/config"
 	"github.com/ahhvahh/ai-bash-generator/internal/deps"
 	"github.com/ahhvahh/ai-bash-generator/internal/llama"
+	"github.com/ahhvahh/ai-bash-generator/internal/observability"
 	"github.com/ahhvahh/ai-bash-generator/internal/pipeline"
 	"github.com/ahhvahh/ai-bash-generator/internal/platform"
 	"github.com/ahhvahh/ai-bash-generator/internal/service"
 )
 
-func main() { os.Exit(run(os.Args[1:])) }
+func main() {
+	level := observability.ConfigureFromEnv()
+	slog.Debug("logging configurado", "component", "observability", "level", level.String())
+	os.Exit(run(os.Args[1:]))
+}
 
 func run(args []string) int {
 	fs := flag.NewFlagSet("ai-bash-gen", flag.ContinueOnError)
@@ -101,6 +107,8 @@ func runDependencyCheck(configPath string) int {
 }
 
 func runDaemon(configPath string) int {
+	started := time.Now()
+	slog.Info("inicializando ai-bash-gen", "event", "daemon_start", "config", configPath)
 	cfg, err := loadAndValidateConfig(configPath)
 	if err != nil {
 		slog.Error("dependências/configuração inválidas; serviço não será iniciado", "config", configPath, "error", err)
@@ -131,6 +139,8 @@ func runDaemon(configPath string) int {
 	defer generationService.Close()
 
 	slog.Info("ai-bash-gen iniciado",
+		"event", "daemon_ready",
+		"startup_duration_ms", time.Since(started).Milliseconds(),
 		"config", configPath,
 		"pid", os.Getpid(),
 		"llama_binary", cfg.Llama.Binary,
