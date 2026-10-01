@@ -1004,10 +1004,14 @@ install_runtime_assets() {
 
 validate_runtime_dependencies() {
   local bin="$1" config_file="$2" service_user="$3" use_service_user="$4"
-  local output
+  local output runuser_cmd
 
   if [[ "$use_service_user" == "yes" ]]; then
-    output="$("${SUDO[@]}" runuser -u "$service_user" -- "$bin" --config "$config_file" --check-dependencies 2>&1)" ||
+    runuser_cmd="$(resolve_system_command runuser)" || {
+      die "runuser não encontrado. No Debian, ele é fornecido pelo pacote util-linux."
+    }
+    info "runuser: $runuser_cmd"
+    output="$("${SUDO[@]}" "$runuser_cmd" -u "$service_user" -- "$bin" --config "$config_file" --check-dependencies 2>&1)" ||
       die "validação Go das dependências falhou para o usuário de serviço: $output"
   else
     output="$("$bin" --config "$config_file" --check-dependencies 2>&1)" ||
