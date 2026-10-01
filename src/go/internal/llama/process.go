@@ -21,6 +21,7 @@ const modelAlias = "ai-bash-gen"
 type Process struct {
 	cfg        config.LlamaConfig
 	socketPath string
+	alias      string
 	client     *Client
 
 	mu     sync.Mutex
@@ -29,10 +30,18 @@ type Process struct {
 }
 
 func NewProcess(cfg config.LlamaConfig, socketPath string) *Process {
+	return NewNamedProcess(cfg, socketPath, modelAlias)
+}
+
+func NewNamedProcess(cfg config.LlamaConfig, socketPath, alias string) *Process {
+	if alias == "" {
+		alias = modelAlias
+	}
 	return &Process{
-		cfg: cfg,
+		cfg:        cfg,
 		socketPath: socketPath,
-		client: NewClient(socketPath, modelAlias, cfg.MaxTokens, cfg.Temperature),
+		alias:      alias,
+		client:     NewClient(socketPath, alias, cfg.MaxTokens, cfg.Temperature),
 	}
 }
 
@@ -48,7 +57,7 @@ func (p *Process) Start(ctx context.Context, startupTimeout time.Duration) error
 	}
 
 	verbosity := llamaLogVerbosity()
-	args := llamaServerArgs(p.cfg, p.socketPath, verbosity)
+	args := llamaServerArgsNamed(p.cfg, p.socketPath, verbosity, p.alias)
 	cmd := exec.Command(p.cfg.Binary, args...)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
@@ -58,6 +67,7 @@ func (p *Process) Start(ctx context.Context, startupTimeout time.Duration) error
 		"binary", p.cfg.Binary,
 		"socket", p.socketPath,
 		"model", p.cfg.Model,
+		"agent", p.alias,
 		"context_size", p.cfg.ContextSize,
 		"log_verbosity", verbosity,
 		"reasoning", "off",
@@ -84,6 +94,7 @@ func (p *Process) Start(ctx context.Context, startupTimeout time.Duration) error
 		"pid", cmd.Process.Pid,
 		"socket", p.socketPath,
 		"model", p.cfg.Model,
+		"agent", p.alias,
 		"log_verbosity", verbosity,
 		"reasoning", "off",
 	)
@@ -169,11 +180,15 @@ func (p *Process) Close() error {
 }
 
 func llamaServerArgs(cfg config.LlamaConfig, socketPath string, verbosity int) []string {
+	return llamaServerArgsNamed(cfg, socketPath, verbosity, modelAlias)
+}
+
+func llamaServerArgsNamed(cfg config.LlamaConfig, socketPath string, verbosity int, alias string) []string {
 	return []string{
 		"--host", socketPath,
 		"--model", cfg.Model,
 		"--ctx-size", strconv.Itoa(cfg.ContextSize),
-		"--alias", modelAlias,
+		"--alias", alias,
 		"--no-webui",
 		"--reasoning", "off",
 		"--log-verbosity", strconv.Itoa(verbosity),
