@@ -243,6 +243,33 @@ if [[ "${AI_BASH_GEN_TEST_PRIVILEGED:-0}" == "1" ]]; then
   sudo groupadd "$test_group"
   SUDO=(sudo)
 
+  force_source="$tmp/force-source"
+  force_target="$tmp/force-target"
+  printf 'versao-antiga\n' | sudo tee "$force_target" >/dev/null
+  printf 'versao-nova\n' >"$force_source"
+  sudo chmod 0755 "$force_target"
+  chmod 0755 "$force_source"
+  FORCE_MODE=1
+  install_binary "$force_source" "$force_target"
+  FORCE_MODE=0
+  [[ "$(cat "$force_target")" == "versao-nova" ]] || fail "--force não substituiu binário existente"
+  compgen -G "$force_target.backup.*" >/dev/null || fail "--force não criou backup do binário substituído"
+  sudo rm -f -- "$force_target" "$force_target".backup.*
+  pass "--force substitui binário diferente sem cancelar a instalação"
+
+  service_group="abgsg$(date +%s)"
+  service_user="abgsu$(date +%s)"
+  sudo groupadd "$service_group"
+  sudo useradd --system --gid "$service_group" --home-dir "$tmp/service-home" --no-create-home --shell /usr/sbin/nologin "$service_user"
+  service_uid_before="$(id -u "$service_user")"
+  service_gid_before="$(getent group "$service_group" | cut -d: -f3)"
+  create_service_account "$service_user" "$service_group" "$tmp/service-home"
+  [[ "$(id -u "$service_user")" == "$service_uid_before" ]] || fail "usuário existente foi recriado/alterado"
+  [[ "$(getent group "$service_group" | cut -d: -f3)" == "$service_gid_before" ]] || fail "grupo existente foi recriado/alterado"
+  sudo userdel "$service_user"
+  sudo groupdel "$service_group"
+  pass "conta e grupo de serviço existentes são reutilizados sem recriação"
+
   fake_dep_bin="$tmp/fake-dependency-check"
   fake_dep_config="$tmp/fake-config.yaml"
   cat >"$fake_dep_bin" <<'EOF'
