@@ -38,6 +38,25 @@ chmod +x "$fake_llama"
 validate_llama_source "$fake_llama" || fail "llama-server compatível foi recusado"
 pass "detecta llama-server compatível com Unix Socket"
 
+AI_BASH_GEN_LLAMA_SERVER="$fake_llama"
+export AI_BASH_GEN_LLAMA_SERVER
+detected_llama="$(detect_llama_default)"
+[[ "$detected_llama" == "$fake_llama" ]] || fail "override AI_BASH_GEN_LLAMA_SERVER não foi priorizado"
+
+LLAMA_SOURCE=""
+LLAMA_INSTALLATION_MODE=""
+ensure_llama_server_available
+[[ "$LLAMA_SOURCE" == "$fake_llama" ]] || fail "preflight não preservou llama-server existente"
+[[ "$LLAMA_INSTALLATION_MODE" == "existing" ]] || fail "modo do llama-server deveria ser existing"
+unset AI_BASH_GEN_LLAMA_SERVER
+pass "preflight reutiliza llama-server compatível sem reinstalar"
+
+[[ "$LLAMA_CPP_VERSION" == "v0.5.0" ]] || fail "versão do llama.cpp não está fixada em v0.5.0"
+[[ "$LLAMA_CPP_COMMIT" == "d2e54583c7452353eb35d40431281f6ee984332f" ]] || fail "commit do llama.cpp não corresponde à versão fixada"
+grep -Fq -- '--target llama-server' "$ROOT/install-binary.sh" || fail "instalador não compila especificamente o target llama-server"
+grep -Fq -- '-DBUILD_SHARED_LIBS=OFF' "$ROOT/install-binary.sh" || fail "build do llama.cpp não está configurado como estático"
+pass "instalação automática do llama.cpp está fixada e limitada ao llama-server"
+
 fake_model="$tmp/model.gguf"
 printf 'GGUF-test\n' >"$fake_model"
 validate_model_source "$fake_model" || fail "modelo GGUF válido foi recusado"
