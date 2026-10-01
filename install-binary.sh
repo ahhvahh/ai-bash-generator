@@ -1152,7 +1152,8 @@ prepare_directories() {
 
 
 create_bootstrap_config() {
-  local config_dir="$1" group="$2" llama_binary="$3" model_file="$4"
+  local config_dir="$1" group="$2" llama_binary="$3"
+  local normalizer_model="$4" generator_model="$5" database_user="$6"
   local config_file temp_config
   config_file="$config_dir/config.yaml"
 
@@ -1164,19 +1165,47 @@ create_bootstrap_config() {
   temp_config="$(mktemp)"
   cat >"$temp_config" <<__CONFIG__
 # ai-bash-gen - configuração bootstrap
+# "llama" permanece como compatibilidade e aponta para o bash-generator.
 llama:
   binary: "$llama_binary"
-  model: "$model_file"
+  model: "$generator_model"
   context_size: $DEFAULT_CONTEXT_SIZE
   startup_timeout: $DEFAULT_STARTUP_TIMEOUT
   request_timeout: $DEFAULT_REQUEST_TIMEOUT
   max_tokens: $DEFAULT_MAX_TOKENS
   temperature: $DEFAULT_TEMPERATURE
+
+agents:
+  request_normalizer:
+    binary: "$llama_binary"
+    model: "$normalizer_model"
+    context_size: $DEFAULT_NORMALIZER_CONTEXT_SIZE
+    startup_timeout: $DEFAULT_STARTUP_TIMEOUT
+    request_timeout: $DEFAULT_NORMALIZER_REQUEST_TIMEOUT
+    max_tokens: $DEFAULT_NORMALIZER_MAX_TOKENS
+    temperature: $DEFAULT_NORMALIZER_TEMPERATURE
+
+  bash_generator:
+    binary: "$llama_binary"
+    model: "$generator_model"
+    context_size: $DEFAULT_CONTEXT_SIZE
+    startup_timeout: $DEFAULT_STARTUP_TIMEOUT
+    request_timeout: $DEFAULT_REQUEST_TIMEOUT
+    max_tokens: $DEFAULT_MAX_TOKENS
+    temperature: $DEFAULT_TEMPERATURE
+
+database:
+  host: "$DEFAULT_POSTGRES_HOST"
+  port: $DEFAULT_POSTGRES_PORT
+  name: "$DEFAULT_POSTGRES_DATABASE"
+  user: "$database_user"
+  required: true
+  search_limit: $DEFAULT_POSTGRES_SEARCH_LIMIT
 __CONFIG__
 
   "${SUDO[@]}" install -o root -g "$group" -m 0640 "$temp_config" "$config_file"
   rm -f -- "$temp_config"
-  ok "configuração bootstrap criada em $config_file"
+  ok "configuração bootstrap multiagente criada em $config_file"
 }
 
 migrate_managed_runtime_defaults() {
