@@ -131,6 +131,7 @@ func (s *Server) handle(conn net.Conn) error {
 		"instruction_chars", len([]rune(request.Text)),
 		"instruction_bytes", len(request.Text),
 		"requested_filename", request.RequestedFilename,
+		"target_stage", request.TargetStage.String(),
 	)
 
 	sendProgress := func(stage protocol.Stage, state protocol.ProgressState, message string) error {
@@ -203,12 +204,23 @@ func (s *Server) handle(conn net.Conn) error {
 		result.RequestID = requestID
 		result.ElapsedMS = uint64(time.Since(started).Milliseconds())
 
-		expectedStages := []protocol.Stage{
+		targetStage := request.TargetStage
+		if targetStage == protocol.StageUnspecified {
+			targetStage = protocol.StageBashOutput
+		}
+		allStages := []protocol.Stage{
 			protocol.StageRequestNormalizer,
 			protocol.StageSearchCapabilities,
 			protocol.StageBashGenerator,
 			protocol.StageValidation,
 			protocol.StageBashOutput,
+		}
+		expectedStages := make([]protocol.Stage, 0, len(allStages))
+		for _, stage := range allStages {
+			expectedStages = append(expectedStages, stage)
+			if stage == targetStage {
+				break
+			}
 		}
 		missingStages := make([]string, 0)
 		for _, stage := range expectedStages {
