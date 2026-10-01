@@ -33,7 +33,7 @@ func TestClientUsesUnixSocketForHealthAndChat(t *testing.T) {
 				t.Errorf("model=%q", req.Model)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte("{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"#!/usr/bin/env bash\\\\necho ok\"}}]}"))
+			_, _ = w.Write([]byte("{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"#!/usr/bin/env bash\\necho ok\"}}]}"))
 		default:
 			http.NotFound(w, r)
 		}
