@@ -848,13 +848,30 @@ resolve_system_command() {
 
 create_service_account() {
   local user="$1" group="$2" home="$3"
-  local groupadd_cmd useradd_cmd nologin_shell
+  local groupadd_cmd="" useradd_cmd="" nologin_shell=""
+  local group_entry="" user_entry=""
 
-  # Debian instala groupadd/useradd normalmente em /usr/sbin.
-  # Resolva os caminhos antes de qualquer alteração para não depender do PATH.
-  groupadd_cmd="$(resolve_system_command groupadd)" || {
-    die "groupadd não encontrado. No Debian, ele é fornecido pelo pacote 'passwd'. Instale com: sudo apt install passwd"
-  }
+  group_entry="$(getent group "$group" 2>/dev/null || true)"
+  if [[ -n "$group_entry" ]]; then
+    info "grupo existente será reutilizado: $group"
+    info "grupo detectado: $group_entry"
+  else
+    groupadd_cmd="$(resolve_system_command groupadd)" || {
+      die "groupadd não encontrado. No Debian, ele é fornecido pelo pacote 'passwd'. Instale com: sudo apt install passwd"
+    }
+    info "groupadd: $groupadd_cmd"
+    "${SUDO[@]}" "$groupadd_cmd" --system "$group"
+    group_entry="$(getent group "$group" 2>/dev/null || true)"
+    [[ -n "$group_entry" ]] || die "grupo foi criado, mas não pôde ser resolvido por getent: $group"
+    ok "grupo criado: $group"
+  fi
+
+  user_entry="$(getent passwd "$user" 2>/dev/null || true)"
+  if [[ -n "$user_entry" ]]; then
+    info "usuário existente será reutilizado: $user"
+    info "usuário detectado: $user_entry"
+    return 0
+  fi
 
   useradd_cmd="$(resolve_system_command useradd)" || {
     die "useradd não encontrado. No Debian, ele é fornecido pelo pacote 'passwd'. Instale com: sudo apt install passwd"
@@ -868,44 +885,56 @@ create_service_account() {
     die "shell nologin não encontrada em um caminho padrão Debian."
   fi
 
-  info "groupadd: $groupadd_cmd"
-  info "useradd:  $useradd_cmd"
+  info "useradd: $useradd_cmd"
+  "${SUDO[@]}" "$useradd_cmd" \
+    --system \
+    --gid "$group" \
+    --home-dir "$home" \
+    --no-create-home \
+    --shell "$nologin_shell" \
+    "$user"
 
-  if getent group "$group" >/dev/null 2>&1; then
-    info "grupo já existe: $group"
-  else
-    "${SUDO[@]}" "$groupadd_cmd" --system "$group"
-    ok "grupo criado: $group"
-  fi
-
-  if id "$user" >/dev/null 2>&1; then
-    info "usuário já existe: $user"
-  else
-    "${SUDO[@]}" "$useradd_cmd" \
-      --system \
-      --gid "$group" \
-      --home-dir "$home" \
-      --no-create-home \
-      --shell "$nologin_shell" \
-      "$user"
-    ok "usuário criado: $user"
-  fi
+  user_entry="$(getent passwd "$user" 2>/dev/null || true)"
+  [[ -n "$user_entry" ]] || die "usuário foi criado, mas não pôde ser resolvido por getent: $user"
+  ok "usuário criado: $user"
 }
 install_binary() {
   local source="$1" target="$2"
-  local target_dir backup
+  local target_dir backup current_sha="" new_sha=""
+  local source_real target_real
 
   target_dir="$(dirname -- "$target")"
   "${SUDO[@]}" install -d -o root -g root -m 0755 "$target_dir"
 
+  source_real="$(readlink -f -- "$source" 2>/dev/null || true)"
+  target_real="$(readlink -f -- "$target" 2>/dev/null || true)"
+  if [[ -n "$source_real" && -n "$target_real" && "$source_real" == "$target_real" ]]; then
+    ok "binário de origem já é o destino instalado; reutilizando: $target"
+    return 0
+  fi
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    new_sha="$(sha256sum -- "$source" | awk '{print $1}')"
+  fi
+
   if [[ -e "$target" ]]; then
     warn "já existe um binário instalado em: $target"
     if command -v sha256sum >/dev/null 2>&1; then
-      info "SHA-256 atual: $(sha256sum -- "$target" 2>/dev/null | awk '{print $1}' || true)"
-      info "SHA-256 novo : $(sha256sum -- "$source" | awk '{print $1}')"
+      current_sha="$(sha256sum -- "$target" 2>/dev/null | awk '{print $1}' || true)"
+      info "SHA-256 atual: $current_sha"
+      info "SHA-256 novo : $new_sha"
     fi
 
-    ask_yes_no "Substituir o binário existente?" "N" || die "instalação cancelada."
+    if [[ -n "$current_sha" && -n "$new_sha" && "$current_sha" == "$new_sha" ]]; then
+      ok "binário instalado já corresponde ao binário novo; reutilizando sem backup."
+      return 0
+    fi
+
+    if [[ "${FORCE_MODE:-0}" == "1" ]]; then
+      info "--force: substituindo automaticamente o binário instalado porque o conteúdo é diferente."
+    else
+      ask_yes_no "Substituir o binário existente?" "N" || die "instalação cancelada."
+    fi
 
     backup="${target}.backup.$(date +%Y%m%d%H%M%S)"
     "${SUDO[@]}" cp -a -- "$target" "$backup"

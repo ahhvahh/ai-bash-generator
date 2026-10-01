@@ -370,7 +370,7 @@ A instalação totalmente automática usa:
 ./install-binary.sh ./bin/amd64/ai-bash-gen --force
 ```
 
-Com `--force`, o instalador não solicita confirmações e aplica os valores padrão: instala dependências ausentes, instala/reutiliza `llama.cpp`, baixa o modelo padrão quando necessário, cria a conta de serviço, instala a unit systemd, habilita no boot e inicia/reinicia o serviço. Configurações funcionais já existentes são preservadas.
+Com `--force`, o instalador não solicita confirmações e aplica os valores padrão: instala dependências ausentes, instala/reutiliza `llama.cpp`, baixa o modelo padrão quando necessário, instala a conta de serviço, instala a unit systemd, habilita no boot e inicia/reinicia o serviço. Se o binário instalado for diferente do novo, ele cria backup e substitui automaticamente; se o SHA-256 for igual, apenas reutiliza o binário já instalado. Usuário e grupo de serviço existentes são detectados via `getent` e reutilizados sem exclusão ou recriação. Configurações funcionais já existentes são preservadas.
 
 O instalador também permite informar um usuário cliente. Esse usuário é incluído no grupo do serviço para conseguir atravessar `/run/ai-bash-gen/routes` e abrir sockets com modo `0660`. A nova associação de grupo requer uma nova sessão do usuário.
 
