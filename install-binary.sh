@@ -353,10 +353,10 @@ install_llama_cpp_from_source() {
 
     git init -q "$source_dir"
     git -C "$source_dir" remote add origin "$LLAMA_CPP_REPOSITORY"
-    git -C "$source_dir" fetch --quiet --depth 1 origin "$LLAMA_CPP_COMMIT"
-    git -C "$source_dir" checkout --quiet --detach FETCH_HEAD
+    git -C "$source_dir" fetch --quiet --depth 1 origin "refs/tags/$LLAMA_CPP_VERSION:refs/tags/$LLAMA_CPP_VERSION"
+    actual_commit="$(git -C "$source_dir" rev-list -n 1 "$LLAMA_CPP_VERSION")"
+    git -C "$source_dir" checkout --quiet --detach "$actual_commit"
 
-    actual_commit="$(git -C "$source_dir" rev-parse HEAD)"
     [[ "$actual_commit" == "$LLAMA_CPP_COMMIT" ]] || {
       echo "[ERRO] commit recebido do llama.cpp não corresponde ao commit fixado." >&2
       exit 1
