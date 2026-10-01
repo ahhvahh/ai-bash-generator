@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ahhvahh/ai-bash-generator/internal/observability"
 	"github.com/ahhvahh/ai-bash-generator/internal/output"
 	"github.com/ahhvahh/ai-bash-generator/internal/protocol"
 )
@@ -37,11 +38,23 @@ func (r *Runner) Generate(ctx context.Context, request protocol.GenerateRequest,
 
 	ctx, cancel := context.WithTimeout(ctx, r.timeout)
 	defer cancel()
+	logger := observability.Logger(ctx).With("component", "pipeline")
+	pipelineStarted := time.Now()
+	logger.Debug("pipeline iniciado",
+		"event", "pipeline_start",
+		"timeout_ms", r.timeout.Milliseconds(),
+		"requested_filename", request.RequestedFilename,
+	)
 
 	if err := progress(protocol.StageRequestNormalizer, protocol.StateStarted, "normalizando solicitação"); err != nil {
 		return protocol.BashArtifact{}, err
 	}
 	normalized := strings.TrimSpace(request.Text)
+	logger.Debug("solicitação normalizada",
+		"event", "request_normalized",
+		"input_chars", len([]rune(request.Text)),
+		"normalized_chars", len([]rune(normalized)),
+	)
 	if err := progress(protocol.StageRequestNormalizer, protocol.StateCompleted, "solicitação normalizada"); err != nil {
 		return protocol.BashArtifact{}, err
 	}
@@ -49,21 +62,38 @@ func (r *Runner) Generate(ctx context.Context, request protocol.GenerateRequest,
 	if err := progress(protocol.StageSearchCapabilities, protocol.StateStarted, "avaliando capabilities disponíveis"); err != nil {
 		return protocol.BashArtifact{}, err
 	}
-	// O catálogo MCP ainda não está ligado ao caminho mínimo funcional. A
-	// geração continua sem capabilities externas, de forma explícita, para
-	// manter o serviço utilizável enquanto o catálogo é implementado.
-	if err := progress(protocol.StageSearchCapabilities, protocol.StateCompleted, "nenhuma capability externa requerida no pipeline mínimo"); err != nil {
+	// O catálogo PostgreSQL/MCP ainda não está conectado ao pipeline mínimo.
+	// O log abaixo é intencional: deixa explícito que nenhuma consulta foi
+	// executada, evitando interpretar esta etapa como uma busca real.
+	logger.Warn("consulta ao catálogo de capabilities não executada",
+		"event", "database_stage_not_implemented",
+		"stage", "search-capabilities",
+		"database", "postgresql",
+		"database_query_executed", false,
+		"capability_catalog", "in_development",
+	)
+	if err := progress(protocol.StageSearchCapabilities, protocol.StateCompleted, "EM DESENVOLVIMENTO: PostgreSQL/Capability Catalog ainda não conectado; consulta ao banco não executada"); err != nil {
 		return protocol.BashArtifact{}, err
 	}
 
 	if err := progress(protocol.StageBashGenerator, protocol.StateStarted, "gerando script Bash com llama-server"); err != nil {
 		return protocol.BashArtifact{}, err
 	}
+	logger.Debug("enviando solicitação ao llama-server",
+		"event", "llama_generation_start",
+		"system_prompt_chars", len([]rune(generatorSystemPrompt)),
+		"user_prompt_chars", len([]rune(normalized)),
+	)
 	content, err := r.completer.Complete(ctx, generatorSystemPrompt, normalized)
 	if err != nil {
 		_ = progress(protocol.StageBashGenerator, protocol.StateFailed, err.Error())
 		return protocol.BashArtifact{}, fmt.Errorf("bash-generator: %w", err)
 	}
+	logger.Debug("resposta recebida do llama-server",
+		"event", "llama_generation_response",
+		"raw_response_chars", len([]rune(content)),
+		"raw_response_bytes", len(content),
+	)
 	content = cleanGeneratedBash(content)
 	if strings.TrimSpace(content) == "" {
 		err := errors.New("modelo retornou script vazio")
@@ -77,10 +107,21 @@ func (r *Runner) Generate(ctx context.Context, request protocol.GenerateRequest,
 	if err := progress(protocol.StageValidation, protocol.StateStarted, "validando sintaxe com bash -n"); err != nil {
 		return protocol.BashArtifact{}, err
 	}
+	validationStarted := time.Now()
+	logger.Debug("executando validação sintática",
+		"event", "bash_validation_start",
+		"validator", "bash -n",
+		"content_bytes", len(content),
+	)
 	if err := validateBash(ctx, content); err != nil {
 		_ = progress(protocol.StageValidation, protocol.StateFailed, err.Error())
 		return protocol.BashArtifact{}, err
 	}
+	logger.Debug("validação sintática concluída",
+		"event", "bash_validation_complete",
+		"validator", "bash -n",
+		"duration_ms", time.Since(validationStarted).Milliseconds(),
+	)
 	if err := progress(protocol.StageValidation, protocol.StateCompleted, "bash -n aprovado"); err != nil {
 		return protocol.BashArtifact{}, err
 	}
@@ -103,9 +144,20 @@ func (r *Runner) Generate(ctx context.Context, request protocol.GenerateRequest,
 		SHA256:         hex.EncodeToString(sum[:]),
 		FinalOutputRef: filename,
 	}
+	logger.Debug("artefato Bash materializado",
+		"event", "bash_artifact_created",
+		"filename", artifact.Filename,
+		"content_bytes", len(artifact.Content),
+		"sha256", artifact.SHA256,
+	)
 	if err := progress(protocol.StageBashOutput, protocol.StateCompleted, "artefato Bash pronto"); err != nil {
 		return protocol.BashArtifact{}, err
 	}
+	logger.Info("pipeline concluído",
+		"event", "pipeline_complete",
+		"duration_ms", time.Since(pipelineStarted).Milliseconds(),
+		"filename", artifact.Filename,
+	)
 	return artifact, nil
 }
 
