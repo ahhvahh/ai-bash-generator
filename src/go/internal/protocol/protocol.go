@@ -18,12 +18,18 @@ const (
 	StageBashGenerator
 	StageValidation
 	StageBashOutput
+
+	// Appended to preserve the existing numeric wire values of stages 1..5.
+	// Execution order is request-normalizer -> normalized-request -> search-capabilities.
+	StageNormalizedRequest Stage = 6
 )
 
 func (s Stage) String() string {
 	switch s {
 	case StageRequestNormalizer:
 		return "request-normalizer"
+	case StageNormalizedRequest:
+		return "normalized-request"
 	case StageSearchCapabilities:
 		return "search-capabilities"
 	case StageBashGenerator:
