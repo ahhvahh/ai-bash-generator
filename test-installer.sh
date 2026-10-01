@@ -105,6 +105,7 @@ if [[ "${AI_BASH_GEN_TEST_PRIVILEGED:-0}" == "1" ]]; then
   install_llama_cpp_from_source "$fake_installed_llama"
   validate_llama_source "$fake_installed_llama" || fail "instalação automática não produziu llama-server válido"
   pass "fluxo de instalação automática compila e instala o target llama-server"
+  sudo rm -rf -- "$tmp/installed"
 else
   pass "fluxo de instalação automática será exercitado no teste privilegiado"
 fi
