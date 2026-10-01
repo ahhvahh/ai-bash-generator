@@ -210,6 +210,7 @@ func (s *Server) handle(conn net.Conn) error {
 		}
 		allStages := []protocol.Stage{
 			protocol.StageRequestNormalizer,
+			protocol.StageNormalizedRequest,
 			protocol.StageSearchCapabilities,
 			protocol.StageBashGenerator,
 			protocol.StageValidation,
