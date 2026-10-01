@@ -48,16 +48,7 @@ func (p *Process) Start(ctx context.Context, startupTimeout time.Duration) error
 	}
 
 	verbosity := llamaLogVerbosity()
-	args := []string{
-		"--host", p.socketPath,
-		"--model", p.cfg.Model,
-		"--ctx-size", strconv.Itoa(p.cfg.ContextSize),
-		"--alias", modelAlias,
-		"--no-webui",
-		"--log-verbosity", strconv.Itoa(verbosity),
-		"--log-prefix",
-		"--log-timestamps",
-	}
+	args := llamaServerArgs(p.cfg, p.socketPath, verbosity)
 	cmd := exec.Command(p.cfg.Binary, args...)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
@@ -69,6 +60,7 @@ func (p *Process) Start(ctx context.Context, startupTimeout time.Duration) error
 		"model", p.cfg.Model,
 		"context_size", p.cfg.ContextSize,
 		"log_verbosity", verbosity,
+		"reasoning", "off",
 		"args", args,
 	)
 
@@ -93,6 +85,7 @@ func (p *Process) Start(ctx context.Context, startupTimeout time.Duration) error
 		"socket", p.socketPath,
 		"model", p.cfg.Model,
 		"log_verbosity", verbosity,
+		"reasoning", "off",
 	)
 
 	deadlineCtx, cancel := context.WithTimeout(ctx, startupTimeout)
@@ -173,6 +166,20 @@ func (p *Process) Close() error {
 	}
 	slog.Info("llama-server encerrado", "event", "llama_process_stopped")
 	return nil
+}
+
+func llamaServerArgs(cfg config.LlamaConfig, socketPath string, verbosity int) []string {
+	return []string{
+		"--host", socketPath,
+		"--model", cfg.Model,
+		"--ctx-size", strconv.Itoa(cfg.ContextSize),
+		"--alias", modelAlias,
+		"--no-webui",
+		"--reasoning", "off",
+		"--log-verbosity", strconv.Itoa(verbosity),
+		"--log-prefix",
+		"--log-timestamps",
+	}
 }
 
 func llamaLogVerbosity() int {

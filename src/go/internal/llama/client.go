@@ -166,11 +166,23 @@ func (c *Client) Complete(ctx context.Context, systemPrompt, userPrompt string) 
 		return "", err
 	}
 
-	content := strings.TrimSpace(decoded.Choices[0].Message.Content)
+	choice := decoded.Choices[0]
+	content := strings.TrimSpace(choice.Message.Content)
 	if content == "" {
 		err := fmt.Errorf("llama-server retornou conteúdo vazio")
 		logger.Error("resposta vazia do llama-server", "event", "llama_response_invalid", "error", err)
 		return "", err
+	}
+
+	tokenLimitReached := choice.FinishReason == "length" ||
+		(c.maxTokens > 0 && decoded.Usage.CompletionTokens >= c.maxTokens)
+	if tokenLimitReached {
+		logger.Warn("resposta do llama-server atingiu o limite de geração",
+			"event", "llama_generation_token_limit",
+			"finish_reason", choice.FinishReason,
+			"completion_tokens", decoded.Usage.CompletionTokens,
+			"max_tokens", c.maxTokens,
+		)
 	}
 
 	logger.Info("chamada ao llama-server concluída",
@@ -182,6 +194,8 @@ func (c *Client) Complete(ctx context.Context, systemPrompt, userPrompt string) 
 		"prompt_tokens", decoded.Usage.PromptTokens,
 		"completion_tokens", decoded.Usage.CompletionTokens,
 		"total_tokens", decoded.Usage.TotalTokens,
+		"finish_reason", choice.FinishReason,
+		"token_limit_reached", tokenLimitReached,
 	)
 	return content, nil
 }
@@ -201,7 +215,8 @@ type chatRequest struct {
 
 type chatResponse struct {
 	Choices []struct {
-		Message chatMessage `json:"message"`
+		Message      chatMessage `json:"message"`
+		FinishReason string      `json:"finish_reason"`
 	} `json:"choices"`
 	Usage struct {
 		PromptTokens     int `json:"prompt_tokens"`
