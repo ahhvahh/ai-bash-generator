@@ -400,7 +400,7 @@ Além dos testes ELF/CLI, o teste sobe o daemon em um runtime temporário e veri
 
 O pacote inclui 10 solicitações predefinidas, em ordem de complexidade crescente. Os scripts retornados **não são executados**. Para cada caso são verificados:
 
-- todas as cinco etapas do pipeline concluídas com `OK`;
+- todas as seis etapas do pipeline concluídas com `OK`;
 - filename seguro;
 - SHA-256, quando informado pelo servidor;
 - sintaxe com `bash -n`;
