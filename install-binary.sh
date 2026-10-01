@@ -564,6 +564,121 @@ ensure_debian_packages() {
   ensure_debian_package_list "dependências Debian do ai-bash-gen" "${REQUIRED_DEBIAN_PACKAGES[@]}"
 }
 
+ensure_postgresql_packages() {
+  ensure_debian_package_list "PostgreSQL/Capability Catalog" "${POSTGRES_PACKAGES[@]}"
+  command -v psql >/dev/null 2>&1 || die "psql não encontrado após instalação do PostgreSQL client."
+}
+
+setup_postgresql_catalog() {
+  local service_user="$1"
+  local runuser_cmd role_exists db_exists schema_file
+
+  ensure_postgresql_packages
+
+  if command -v systemctl >/dev/null 2>&1; then
+    if ! "${SUDO[@]}" systemctl is-active --quiet postgresql; then
+      info "iniciando PostgreSQL..."
+      "${SUDO[@]}" systemctl start postgresql || die "não foi possível iniciar postgresql.service"
+    fi
+  fi
+
+  runuser_cmd="$(resolve_system_command runuser)" || {
+    die "runuser não encontrado. No Debian, ele é fornecido pelo pacote util-linux."
+  }
+
+  role_exists="$("${SUDO[@]}" "$runuser_cmd" -u postgres -- psql     --no-psqlrc --tuples-only --no-align --dbname postgres     --set "role=$service_user"     --command "SELECT 1 FROM pg_roles WHERE rolname = :'role';" 2>/dev/null | tr -d '[:space:]' || true)"
+
+  if [[ "$role_exists" == "1" ]]; then
+    info "role PostgreSQL existente será reutilizada: $service_user"
+  else
+    "${SUDO[@]}" "$runuser_cmd" -u postgres -- createuser       --login --no-superuser --no-createdb --no-createrole "$service_user"
+    ok "role PostgreSQL criada: $service_user"
+  fi
+
+  db_exists="$("${SUDO[@]}" "$runuser_cmd" -u postgres -- psql     --no-psqlrc --tuples-only --no-align --dbname postgres     --set "dbname=$DEFAULT_POSTGRES_DATABASE"     --command "SELECT 1 FROM pg_database WHERE datname = :'dbname';" 2>/dev/null | tr -d '[:space:]' || true)"
+
+  if [[ "$db_exists" == "1" ]]; then
+    info "database PostgreSQL existente será reutilizado: $DEFAULT_POSTGRES_DATABASE"
+  else
+    "${SUDO[@]}" "$runuser_cmd" -u postgres -- createdb       --owner "$service_user" "$DEFAULT_POSTGRES_DATABASE"
+    ok "database PostgreSQL criado: $DEFAULT_POSTGRES_DATABASE"
+  fi
+
+  schema_file="$(mktemp)"
+  cat >"$schema_file" <<'__AI_BASH_GEN_SQL__'
+CREATE SCHEMA IF NOT EXISTS capability_catalog;
+
+CREATE TABLE IF NOT EXISTS capability_catalog.capability (
+  id text PRIMARY KEY,
+  type text NOT NULL CHECK (type IN ('function', 'script', 'application', 'service')),
+  intent text NOT NULL DEFAULT '',
+  description text NOT NULL,
+  match_instruction text NOT NULL,
+  input_description text NOT NULL DEFAULT '',
+  output_description text NOT NULL DEFAULT '',
+  enabled boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  search_document tsvector GENERATED ALWAYS AS (
+    to_tsvector(
+      'english',
+      coalesce(intent, '') || ' ' ||
+      coalesce(description, '') || ' ' ||
+      coalesce(match_instruction, '') || ' ' ||
+      coalesce(input_description, '') || ' ' ||
+      coalesce(output_description, '')
+    )
+  ) STORED
+);
+
+CREATE INDEX IF NOT EXISTS capability_search_document_gin
+  ON capability_catalog.capability USING gin (search_document);
+
+CREATE TABLE IF NOT EXISTS capability_catalog.capability_version (
+  id bigserial PRIMARY KEY,
+  capability_id text NOT NULL REFERENCES capability_catalog.capability(id) ON DELETE CASCADE,
+  version integer NOT NULL,
+  implementation_type text NOT NULL DEFAULT 'function',
+  implementation text NOT NULL DEFAULT '',
+  dependencies text[] NOT NULL DEFAULT '{}',
+  risk_level integer NOT NULL DEFAULT 0,
+  checksum text NOT NULL DEFAULT '',
+  fingerprint text,
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (capability_id, version)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS capability_one_active_version
+  ON capability_catalog.capability_version (capability_id)
+  WHERE active;
+
+CREATE UNIQUE INDEX IF NOT EXISTS capability_active_fingerprint
+  ON capability_catalog.capability_version (fingerprint)
+  WHERE active AND fingerprint IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS capability_catalog.capability_usage (
+  id bigserial PRIMARY KEY,
+  capability_version_id bigint NOT NULL REFERENCES capability_catalog.capability_version(id),
+  request_id text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (capability_version_id, request_id)
+);
+__AI_BASH_GEN_SQL__
+
+  if ! "${SUDO[@]}" "$runuser_cmd" -u "$service_user" -- psql     --no-psqlrc     --host "$DEFAULT_POSTGRES_HOST"     --port "$DEFAULT_POSTGRES_PORT"     --dbname "$DEFAULT_POSTGRES_DATABASE"     --username "$service_user"     --set ON_ERROR_STOP=1 <"$schema_file"; then
+    rm -f -- "$schema_file"
+    die "falha ao aplicar schema do Capability Catalog."
+  fi
+  rm -f -- "$schema_file"
+
+  if ! "${SUDO[@]}" "$runuser_cmd" -u "$service_user" -- psql     --no-psqlrc --tuples-only --no-align     --host "$DEFAULT_POSTGRES_HOST"     --port "$DEFAULT_POSTGRES_PORT"     --dbname "$DEFAULT_POSTGRES_DATABASE"     --username "$service_user"     --command "SELECT 1;" | grep -Fxq "1"; then
+    die "usuário de serviço não conseguiu validar a conexão PostgreSQL."
+  fi
+
+  ok "Capability Catalog PostgreSQL configurado e validado."
+}
+
 llama_build_jobs() {
   local jobs mem_kb
   jobs="$(nproc 2>/dev/null || printf '1')"
