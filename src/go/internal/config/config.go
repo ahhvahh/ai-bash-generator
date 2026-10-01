@@ -307,12 +307,12 @@ func cleanScalar(value string) string {
 	if value == "" {
 		return ""
 	}
-	if strings.HasPrefix(value, "\\\"") && strings.HasSuffix(value, "\\\"") {
+	if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
 		if unquoted, err := strconv.Unquote(value); err == nil {
 			return unquoted
 		}
 	}
-	if strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'") && len(value) >= 2 {
+	if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
 		return value[1 : len(value)-1]
 	}
 	if i := strings.Index(value, " #"); i >= 0 {
