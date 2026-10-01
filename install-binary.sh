@@ -1036,6 +1036,8 @@ Type=simple
 User=$user
 Group=$group
 Environment=AI_BASH_GEN_RUNTIME_DIR=$runtime_dir
+Environment=AI_BASH_GEN_LOG_LEVEL=debug
+Environment=AI_BASH_GEN_LLAMA_LOG_VERBOSITY=5
 ExecStart=$bin_target --config $config_dir/config.yaml
 Restart=on-failure
 RestartSec=2s
@@ -1461,6 +1463,7 @@ main() {
   info "caminhos: $BIN_TARGET --show-paths"
   info "dependências: $BIN_TARGET --config $CONFIG_DIR/config.yaml --check-dependencies"
   info "socket esperado: $RUNTIME_DIR/routes/generate.sock"
+  info "logs em tempo real: sudo journalctl -u $APP_NAME -f -o short-precise --no-pager"
   if [[ "${START_SERVICE:-no}" == "yes" ]]; then
     info "serviço e rotas foram validados após a inicialização."
   fi

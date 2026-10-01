@@ -214,6 +214,12 @@ pass "runtime personalizado é propagado para --show-paths"
 grep -Fq 'Environment=AI_BASH_GEN_RUNTIME_DIR=$runtime_dir' "$ROOT/install-binary.sh" || fail "unit não propaga AI_BASH_GEN_RUNTIME_DIR"
 pass "unit systemd propaga runtime configurado"
 
+grep -Fq 'Environment=AI_BASH_GEN_LOG_LEVEL=debug' "$ROOT/install-binary.sh" || fail "unit não habilita logs debug do ai-bash-gen"
+grep -Fq 'Environment=AI_BASH_GEN_LLAMA_LOG_VERBOSITY=5' "$ROOT/install-binary.sh" || fail "unit não habilita logs debug do llama-server"
+grep -Fq 'StandardOutput=journal' "$ROOT/install-binary.sh" || fail "unit não envia stdout ao journal"
+grep -Fq 'StandardError=journal' "$ROOT/install-binary.sh" || fail "unit não envia stderr ao journal"
+pass "unit systemd mantém debug completo no journald"
+
 current_user="$(id -un)"
 current_group="$(id -gn)"
 user_has_registered_group "$current_user" "$current_group" || fail "grupo primário do usuário atual não foi reconhecido"
