@@ -123,6 +123,14 @@ func defaults() Config {
 
 func (c *Config) applyFallbacks() {
 	legacy := c.Llama
+	if c.Agents.RequestNormalizer.Binary == "" && c.Agents.RequestNormalizer.Model == "" &&
+		legacy.Binary != "" && legacy.Model != "" {
+		c.Agents.RequestNormalizer = legacy
+	}
+	if c.Agents.BashGenerator.Binary == "" && c.Agents.BashGenerator.Model == "" &&
+		legacy.Binary != "" && legacy.Model != "" {
+		c.Agents.BashGenerator = legacy
+	}
 	fillLlamaFallbacks(&c.Agents.RequestNormalizer, legacy)
 	fillLlamaFallbacks(&c.Agents.BashGenerator, legacy)
 
