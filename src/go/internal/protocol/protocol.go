@@ -62,6 +62,7 @@ func (s ProgressState) String() string {
 type GenerateRequest struct {
 	Text              string
 	RequestedFilename string
+	TargetStage       Stage
 }
 
 type ProgressEvent struct {
@@ -132,16 +133,23 @@ func MarshalRequest(r GenerateRequest) []byte {
 	var b []byte
 	b = appendString(b, 1, r.Text)
 	if r.RequestedFilename != "" { b = appendString(b, 2, r.RequestedFilename) }
+	if r.TargetStage != StageUnspecified { b = appendVarintField(b, 3, uint64(r.TargetStage)) }
 	return b
 }
 
 func UnmarshalRequest(b []byte) (GenerateRequest, error) {
 	var r GenerateRequest
 	err := walk(b, func(f, w uint64, raw []byte, v uint64) error {
-		if w != 2 { return errors.New("GenerateRequest: wire inválido") }
 		switch f {
-		case 1: r.Text = string(raw)
-		case 2: r.RequestedFilename = string(raw)
+		case 1:
+			if w != 2 { return errors.New("GenerateRequest.text: wire inválido") }
+			r.Text = string(raw)
+		case 2:
+			if w != 2 { return errors.New("GenerateRequest.requested_filename: wire inválido") }
+			r.RequestedFilename = string(raw)
+		case 3:
+			if w != 0 { return errors.New("GenerateRequest.target_stage: wire inválido") }
+			r.TargetStage = Stage(v)
 		}
 		return nil
 	})
