@@ -241,7 +241,32 @@ FORCE_MODE=1
 SUDO=()
 migrate_managed_runtime_defaults "$managed_config"
 FORCE_MODE=0
-grep -Eq '^[[:space:]]*context_size:[[:space:]]*32768
+grep -Fq 'context_size: 32768' "$managed_config" || fail "context_size antigo não foi migrado"
+grep -Fq 'request_timeout: 10m' "$managed_config" || fail "request_timeout antigo não foi migrado"
+grep -Fq 'max_tokens: 4096' "$managed_config" || fail "max_tokens antigo não foi migrado"
+compgen -G "$managed_config.backup.*" >/dev/null || fail "migração não criou backup da configuração"
+pass "configuração bootstrap antiga é migrada para os novos padrões"
+
+custom_config="$tmp/custom-config.yaml"
+cat >"$custom_config" <<'EOF'
+llama:
+  binary: "/usr/local/lib/ai-bash-gen/llama-server"
+  model: "/var/lib/ai-bash-gen/models/model.gguf"
+  context_size: 8192
+  startup_timeout: 2m
+  request_timeout: 5m
+  max_tokens: 2048
+  temperature: 0.1
+EOF
+custom_before="$(sha256sum "$custom_config" | awk '{print $1}')"
+FORCE_MODE=1
+migrate_managed_runtime_defaults "$custom_config"
+FORCE_MODE=0
+custom_after="$(sha256sum "$custom_config" | awk '{print $1}')"
+[[ "$custom_before" == "$custom_after" ]] || fail "configuração personalizada foi alterada"
+pass "configuração personalizada permanece intacta"
+
+current_user="$(id -un)"
 current_group="$(id -gn)"
 user_has_registered_group "$current_user" "$current_group" || fail "grupo primário do usuário atual não foi reconhecido"
 pass "detecta grupo já cadastrado"
