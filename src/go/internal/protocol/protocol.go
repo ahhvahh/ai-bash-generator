@@ -62,6 +62,13 @@ func (s ProgressState) String() string {
 type GenerateRequest struct {
 	Text              string
 	RequestedFilename string
+	StopAfterStage    Stage
+}
+
+type StageOutput struct {
+	Stage       Stage
+	ContentType string
+	Content     string
 }
 
 type ProgressEvent struct {
@@ -85,6 +92,7 @@ type GenerateResult struct {
 	ElapsedMS    uint64
 	ErrorCode    string
 	ErrorMessage string
+	StageOutput  *StageOutput
 }
 
 type GenerateEvent struct {
@@ -132,16 +140,23 @@ func MarshalRequest(r GenerateRequest) []byte {
 	var b []byte
 	b = appendString(b, 1, r.Text)
 	if r.RequestedFilename != "" { b = appendString(b, 2, r.RequestedFilename) }
+	if r.StopAfterStage != StageUnspecified { b = appendVarintField(b, 3, uint64(r.StopAfterStage)) }
 	return b
 }
 
 func UnmarshalRequest(b []byte) (GenerateRequest, error) {
 	var r GenerateRequest
 	err := walk(b, func(f, w uint64, raw []byte, v uint64) error {
-		if w != 2 { return errors.New("GenerateRequest: wire inválido") }
 		switch f {
-		case 1: r.Text = string(raw)
-		case 2: r.RequestedFilename = string(raw)
+		case 1:
+			if w != 2 { return errors.New("GenerateRequest.text: wire inválido") }
+			r.Text = string(raw)
+		case 2:
+			if w != 2 { return errors.New("GenerateRequest.requested_filename: wire inválido") }
+			r.RequestedFilename = string(raw)
+		case 3:
+			if w != 0 { return errors.New("GenerateRequest.stop_after_stage: wire inválido") }
+			r.StopAfterStage = Stage(v)
 		}
 		return nil
 	})
@@ -213,6 +228,33 @@ func unmarshalArtifact(b []byte) (BashArtifact, error) {
 	return a, err
 }
 
+func marshalStageOutput(s StageOutput) []byte {
+	var b []byte
+	b = appendVarintField(b, 1, uint64(s.Stage))
+	if s.ContentType != "" { b = appendString(b, 2, s.ContentType) }
+	if s.Content != "" { b = appendString(b, 3, s.Content) }
+	return b
+}
+
+func unmarshalStageOutput(b []byte) (StageOutput, error) {
+	var s StageOutput
+	err := walk(b, func(f, w uint64, raw []byte, v uint64) error {
+		switch f {
+		case 1:
+			if w != 0 { return errors.New("stage_output stage") }
+			s.Stage = Stage(v)
+		case 2:
+			if w != 2 { return errors.New("stage_output content_type") }
+			s.ContentType = string(raw)
+		case 3:
+			if w != 2 { return errors.New("stage_output content") }
+			s.Content = string(raw)
+		}
+		return nil
+	})
+	return s, err
+}
+
 func marshalResult(r GenerateResult) []byte {
 	var b []byte
 	b = appendString(b, 1, r.RequestID)
@@ -220,6 +262,7 @@ func marshalResult(r GenerateResult) []byte {
 	b = appendVarintField(b, 3, r.ElapsedMS)
 	if r.ErrorCode != "" { b = appendString(b, 4, r.ErrorCode) }
 	if r.ErrorMessage != "" { b = appendString(b, 5, r.ErrorMessage) }
+	if r.StageOutput != nil { b = appendBytes(b, 6, marshalStageOutput(*r.StageOutput)) }
 	return b
 }
 func unmarshalResult(b []byte) (GenerateResult, error) {
@@ -231,6 +274,7 @@ func unmarshalResult(b []byte) (GenerateResult, error) {
 		case 3: if w != 0 { return errors.New("result elapsed") }; r.ElapsedMS=v
 		case 4: if w != 2 { return errors.New("result error_code") }; r.ErrorCode=string(raw)
 		case 5: if w != 2 { return errors.New("result error_message") }; r.ErrorMessage=string(raw)
+		case 6: if w != 2 { return errors.New("result stage_output") }; s,err:=unmarshalStageOutput(raw); if err!=nil{return err}; r.StageOutput=&s
 		}
 		return nil
 	})
