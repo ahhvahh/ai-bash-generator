@@ -336,6 +336,8 @@ download_selected_model() {
   local target="$model_dir/$target_name"
   local partial="$model_dir/.${target_name}.part"
   local actual_sha
+  local info_name="${target_name}.info"
+  [[ "$target_name" == "model.gguf" ]] && info_name="model.info"
 
   ensure_debian_package_list "download de modelos GGUF" "${MODEL_DOWNLOAD_PACKAGES[@]}"
   command -v curl >/dev/null 2>&1 || die "curl não encontrado após instalação das dependências de download."
@@ -368,8 +370,8 @@ download_selected_model() {
     printf 'label=%s\n' "$MODEL_LABEL"
     printf 'source=%s\n' "$MODEL_URL"
     printf 'sha256=%s\n' "$MODEL_SHA256"
-  } | "${SUDO[@]}" tee "$model_dir/${target_name}.info" >/dev/null
-  "${SUDO[@]}" chmod 0644 "$model_dir/${target_name}.info"
+  } | "${SUDO[@]}" tee "$model_dir/$info_name" >/dev/null
+  "${SUDO[@]}" chmod 0644 "$model_dir/$info_name"
 
   MODEL_SOURCE="$target"
   MODEL_INSTALLATION_MODE="downloaded"
@@ -1025,8 +1027,8 @@ llama:
   max_tokens: $DEFAULT_MAX_TOKENS
   temperature: $DEFAULT_TEMPERATURE
 
-# Agentes LLM independentes. Por padrão ambos reutilizam o modelo instalado;
-# os caminhos podem ser alterados posteriormente para modelos distintos.
+# Agentes LLM independentes. O instalador usa por padrão um modelo leve para
+# normalização e um modelo especializado em código para a geração.
 normalizer:
   model: "$normalizer_model"
   max_tokens: 1200
