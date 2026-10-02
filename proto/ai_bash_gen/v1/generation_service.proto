@@ -25,6 +25,17 @@ enum ProgressState {
 message GenerateRequest {
   string text = 1;
   string requested_filename = 2;
+
+  // PROCESSING_STAGE_UNSPECIFIED executes the complete pipeline.
+  // Any other value executes the same pipeline through this stage and returns
+  // its intermediate representation in GenerateResult.stage_output.
+  ProcessingStage stop_after_stage = 3;
+}
+
+message StageOutput {
+  ProcessingStage stage = 1;
+  string content_type = 2;
+  string content = 3;
 }
 
 message ProgressEvent {
@@ -41,6 +52,7 @@ message GenerateResult {
   uint64 elapsed_ms = 3;
   string error_code = 4;
   string error_message = 5;
+  StageOutput stage_output = 6;
 }
 
 message GenerateEvent {
