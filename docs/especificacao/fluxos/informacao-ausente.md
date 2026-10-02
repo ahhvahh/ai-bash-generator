@@ -27,7 +27,7 @@ O normalizador identifica pelo menos uma entrada obrigatória ausente.
 2. Cada lacuna identifica tarefa, nome, descrição e contrato aplicável.
 3. A aplicação valida a consistência das lacunas.
 4. O Pipeline Manager encerra o processamento da geração.
-5. Capability Search e Bash Generator não são chamados.
+5. Capability Search e Capability Function Generator não são chamados.
 6. O cliente recebe a informação necessária conforme o contrato externo.
 
 ## Fluxos alternativos
