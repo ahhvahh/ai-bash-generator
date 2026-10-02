@@ -290,9 +290,9 @@ O contrato está em `proto/ai_bash_gen/v1/generation_service.proto`. Uma conexã
 
 O cliente oficial está no repositório `ai-bash-generator-client`. O cliente é responsável por gravar o artefato no filesystem do usuário; o daemon retorna somente `filename`, conteúdo e SHA-256.
 
-Estado atual: o transporte Unix Socket, o streaming de progresso e um pipeline mínimo funcional estão implementados. O daemon valida as dependências antes de publicar `generate.sock`, inicia o `llama-server` em `/run/ai-bash-gen/internal/llama.sock`, aguarda `/health` ficar pronto, gera o Bash via `/v1/chat/completions`, valida a sintaxe com `bash -n` e retorna o artefato ao cliente. Se a primeira geração falhar no `bash -n`, o pipeline envia o erro de validação de volta ao LLM e solicita uma nova geração do zero; são permitidas até 2 tentativas dentro do timeout da requisição.
+Estado atual: o transporte Unix Socket, o streaming de progresso e as etapas principais do pipeline estão implementados. O daemon inicia dois processos privados do `llama-server`: `request-normalizer` em `/run/ai-bash-gen/internal/request-normalizer.sock` e `bash-generator` em `/run/ai-bash-gen/internal/bash-generator.sock`. O primeiro transforma a solicitação em uma `NormalizedRequest` em inglês e decompõe o objetivo em tarefas; em seguida, `search-capabilities` consulta o Capability Catalog PostgreSQL para a instrução canônica e para cada tarefa. O gerador recebe a requisição normalizada mais os candidatos encontrados, produz o Bash, que é validado com `bash -n` e materializado como artefato. Se a primeira geração falhar no `bash -n`, o pipeline envia o erro ao gerador e permite uma segunda tentativa dentro do timeout da requisição.
 
-O estágio `search_capabilities` ainda opera em modo mínimo, sem catálogo MCP/PostgreSQL; a integração completa do catálogo continua sendo uma evolução separada.
+O mesmo `generate.sock` também aceita `stop_after_stage`, permitindo testar isoladamente `request-normalizer`, `search-capabilities`, `bash-generator`, `validation` e `bash-output` sem criar sockets públicos adicionais.
 
 
 
@@ -307,14 +307,18 @@ AI_BASH_GEN_LLAMA_LOG_VERBOSITY=5
 
 Cada requisição recebe um `request_id`. O journal registra recebimento, início/fim de cada etapa, duração em milissegundos, chamada HTTP ao `llama-server`, status HTTP, uso de tokens quando informado pelo servidor, `finish_reason`, detecção de limite de tokens, validação `bash -n`, tentativas de regeneração, SHA-256 do artefato e duração total. Os eventos `generation_validation_failed` e `generation_retry_requested` deixam explícito quando uma saída inválida foi devolvida ao LLM para correção.
 
-A etapa `search-capabilities` ainda não consulta PostgreSQL. Enquanto essa integração estiver pendente, o log registra explicitamente:
+A etapa `search-capabilities` registra a consulta real ao PostgreSQL. Em uma execução normal, o journal contém eventos como:
 
 ```text
-event=database_stage_not_implemented
+event=request_normalized
+normalization_status=NORMALIZATION_STATUS_READY
+task_count=...
+
+event=database_search_complete
 stage=search-capabilities
 database=postgresql
-database_query_executed=false
-capability_catalog=in_development
+database_query_executed=true
+duration_ms=...
 ```
 
 Acompanhamento em tempo real:
@@ -358,9 +362,9 @@ Se algum estiver ausente, o instalador oferece executar `apt-get update` e `apt-
 
 Antes de continuar a configuração do serviço, o instalador procura um `llama-server` compatível. Se não encontrar, ele oferece instalar automaticamente o componente usado pelo projeto: `llama.cpp v0.5.0`, fixado no commit `7fe450e19305b828c199d602c23a8337aaa1f03b`. A instalação automática adiciona, quando necessário, `git`, `cmake`, `build-essential` e `ca-certificates`, baixa o código-fonte oficial, compila somente o target `llama-server` em modo Release/CPU e com bibliotecas internas estáticas, e instala o resultado em `/usr/local/lib/ai-bash-gen/llama-server`.
 
-O `llama-server` não recebe uma unit systemd independente: seu processo é iniciado, monitorado e encerrado pelo próprio `ai-bash-gen`, que o mantém restrito ao Unix Domain Socket privado `/run/ai-bash-gen/internal/llama.sock`. Para o caso de uso de geração de Bash, o runtime é iniciado com `--reasoning off`; isso evita consumir grande parte do orçamento de tokens com raciocínio interno antes do código e reduz o risco de a resposta ser cortada por `max_tokens`.
+O `llama-server` não recebe uma unit systemd independente. O `ai-bash-gen` gerencia dois processos privados, um por agente, cada um em seu Unix Domain Socket interno. Ambos são iniciados com `--reasoning off`.
 
-Se nenhum GGUF local for encontrado, o instalador mostra o hardware detectado e oferece um catálogo curado de modelos executáveis em máquinas com poucos recursos. O padrão é `Qwen3.5-0.8B Q4_0` (~563 MB), por ser atual e adequado ao perfil de laptop com cerca de 8 GB de RAM e CPU de poucos núcleos. Também estão disponíveis `Qwen3.5-0.8B Q8_0`, `Qwen2.5-Coder-1.5B-Instruct Q4_K_M` e `Qwen3.5-4B Q4_K_M`. Os downloads são feitos por HTTPS, gravados em `/var/lib/ai-bash-gen/models/model.gguf` e só são aceitos depois da validação SHA-256 e da assinatura `GGUF`.
+Na instalação automática, o perfil padrão usa dois modelos distintos: `Qwen3.5-0.8B Q4_0` para o `request-normalizer`, priorizando baixa latência, e `Qwen2.5-Coder-1.5B-Instruct Q4_K_M` para o `bash-generator`, priorizando capacidade de geração de código. Os arquivos padrão são `/var/lib/ai-bash-gen/models/request-normalizer.gguf` e `/var/lib/ai-bash-gen/models/bash-generator.gguf`. O catálogo também oferece `Qwen3.5-0.8B Q8_0` e `Qwen3.5-4B Q4_K_M`. Todos os downloads são validados por SHA-256 e assinatura `GGUF`.
 
 A instalação totalmente automática usa:
 
@@ -443,12 +447,30 @@ A configuração mínima é:
 ```yaml
 llama:
   binary: /usr/local/lib/ai-bash-gen/llama-server
-  model: /var/lib/ai-bash-gen/models/model.gguf
+  model: /var/lib/ai-bash-gen/models/bash-generator.gguf
   context_size: 32768
   startup_timeout: 2m
   request_timeout: 10m
   max_tokens: 4096
   temperature: 0.2
+
+normalizer:
+  model: /var/lib/ai-bash-gen/models/request-normalizer.gguf
+  max_tokens: 1200
+  temperature: 0.1
+
+generator:
+  model: /var/lib/ai-bash-gen/models/bash-generator.gguf
+  max_tokens: 4096
+  temperature: 0.2
+
+database:
+  enabled: true
+  host: /var/run/postgresql
+  port: 5432
+  name: ai-bash-gen
+  user: ai-bash-gen
+  search_limit: 8
 ```
 
 O perfil padrão usa uma janela de **32.768 tokens**. Esse valor foi escolhido para ser compatível também com o GGUF oficial do Qwen2.5-Coder-1.5B, cujo contexto completo é 32.768 tokens, e fica muito abaixo do limite nativo do Qwen3.5-0.8B. Para acompanhar instruções mais extensas, o orçamento de saída padrão sobe para **4.096 tokens** e o timeout de requisição para **10 minutos**, evitando que uma geração complexa em CPU seja encerrada prematuramente.
