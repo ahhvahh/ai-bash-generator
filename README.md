@@ -329,6 +329,20 @@ sudo journalctl -u ai-bash-gen -f -o short-precise --no-pager
 
 ## Build, instalação e testes de aceitação
 
+### Pacote Debian A-Bioma
+
+O arquivo `src/package.yaml` descreve o pacote Debian gerado pelo A-Bioma Debian Package Builder. Para `amd64`, o pacote é autocontido para execução e inclui:
+
+- `/usr/bin/ai-bash-gen`;
+- `/usr/lib/ai-bash-gen/llama-server`, compilado a partir do `llama.cpp v0.5.0` no commit fixado `7fe450e19305b828c199d602c23a8337aaa1f03b`;
+- `/usr/share/ai-bash-gen/models/model.gguf`, usando `Qwen3.5-0.8B Q4_0` com SHA-256 validado;
+- configuração em `/etc/ai-bash-gen/config.yaml`;
+- unit `/usr/lib/systemd/system/ai-bash-gen.service`.
+
+O build do pacote exige `go`, `git`, `cmake`, compilador C++, `curl` e acesso à Internet. O modelo é reutilizado a partir de `~/.cache/ai-bash-gen/` quando o SHA-256 confere. A instalação do `.deb` não precisa baixar nem compilar o runtime: o serviço é habilitado, iniciado e validado pelo `post_install_checks`.
+
+As demais arquiteturas permanecem desabilitadas no `package.yaml` até que o `llama-server` correspondente seja compilado e validado para cada alvo. O `build.sh` continua podendo gerar somente os binários Go nas arquiteturas já suportadas.
+
 O build gera o daemon e o utilitário de smoke test para a mesma arquitetura:
 
 ```bash

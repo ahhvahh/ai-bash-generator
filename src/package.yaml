@@ -1,0 +1,460 @@
+# Configuração de build e empacotamento Debian do ai-bash-generator.
+# Contrato: A-Bioma Debian Package Builder schema 1.
+#
+# O pacote amd64 é autocontido para execução: inclui ai-bash-gen, llama-server
+# e o modelo GGUF padrão. O build exige rede para obter as fontes fixadas do
+# llama.cpp e o modelo, mas a instalação do .deb não exige download externo.
+schema: 1
+
+project:
+  name: "ai-bash-gen"
+  origin:
+    repository: "https://github.com/ahhvahh/ai-bash-generator"
+    homepage: "https://github.com/ahhvahh/ai-bash-generator"
+    source_type: "git"
+
+package:
+  name: "ai-bash-gen"
+  section: "utils"
+  priority: "optional"
+  maintainer: "A-Bioma Build System <noreply@localhost>"
+  version:
+    strategy: "git"
+    tag_prefix: "v"
+    fallback: "0.0.0"
+  description:
+    short: "Gerador local de scripts Bash do ecossistema A-Bioma"
+    long: |
+      Aplicação e serviço para geração local de scripts Bash utilizando
+      agentes baseados em LLM, llama.cpp, Unix Domain Sockets e Protocol Buffers.
+      O pacote amd64 inclui o daemon, llama-server, modelo GGUF padrão,
+      ferramentas auxiliares e a unit systemd.
+
+dependencies:
+  depends:
+    - "bash"
+    - "coreutils"
+    - "grep"
+    - "mawk"
+    - "passwd"
+    - "util-linux"
+    - "libc-bin"
+    - "systemd"
+    - "file"
+    - "binutils"
+    - "findutils"
+    - "ca-certificates"
+    - "libstdc++6"
+    - "libgcc-s1"
+    - "libgomp1"
+  recommends: []
+  suggests: []
+  pre_depends: []
+  setup:
+    shell: "/bin/bash"
+    stop_on_error: true
+    commands: []
+
+# ---------------------------------------------------------------------------
+# BUILD
+# ---------------------------------------------------------------------------
+# Dependências do HOST DE BUILD para amd64:
+#   go, git, cmake, c++, curl e sha256sum.
+#
+# Runtime fixado:
+#   llama.cpp v0.5.0
+#   commit 7fe450e19305b828c199d602c23a8337aaa1f03b
+#
+# Modelo fixado:
+#   ggml-org/Qwen3.5-0.8B-GGUF
+#   Qwen3.5-0.8B-Q4_0.gguf (~563 MB, Apache-2.0)
+#
+# O modelo é armazenado em cache no host para evitar novo download a cada build.
+build:
+  working_directory: "."
+
+  architectures:
+    amd64:
+      enabled: true
+      debian_architecture: "amd64"
+      description: "Pacote Linux x86-64 autocontido com llama-server e modelo GGUF."
+      commands:
+        - 'for cmd in go git cmake c++ curl sha256sum install head; do command -v "$cmd" >/dev/null 2>&1 || { echo "[ERRO] dependência de build ausente: $cmd" >&2; exit 1; }; done'
+        - 'case "$(uname -m)" in x86_64|amd64) ;; *) echo "[ERRO] build do runtime amd64 exige host x86-64; encontrado: $(uname -m)" >&2; exit 1 ;; esac'
+        - 'test -f "$PROJECT_ROOT/src/go/go.mod" || { echo "[ERRO] go.mod não encontrado." >&2; exit 1; }'
+        - 'for f in install-binary.sh test-binary.sh test-installer.sh test-generation.sh; do test -f "$PROJECT_ROOT/$f" || { echo "[ERRO] arquivo obrigatório ausente: $f" >&2; exit 1; }; done'
+        - 'rm -rf "$PROJECT_ROOT/bin" "$PROJECT_ROOT/.package-llama.cpp" && mkdir -p "$PROJECT_ROOT/bin/amd64"'
+        - 'COMMIT="$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || printf unknown)"'
+        - 'VERSION="$(git -C "$PROJECT_ROOT" describe --tags --always --dirty 2>/dev/null || printf dev)"'
+        - 'LDFLAGS="-s -w -X github.com/ahhvahh/ai-bash-generator/internal/buildinfo.Version=$VERSION -X github.com/ahhvahh/ai-bash-generator/internal/buildinfo.Commit=$COMMIT"'
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 go build -trimpath -ldflags "$LDFLAGS" -o "$PROJECT_ROOT/bin/amd64/ai-bash-gen" ./cmd/ai-bash-gen)'
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 go build -trimpath -o "$PROJECT_ROOT/bin/amd64/ai-bash-gen-generation-test" ./cmd/ai-bash-gen-generation-test)'
+        - 'LLAMA_REPO="https://github.com/ggml-org/llama.cpp.git"'
+        - 'LLAMA_VERSION="v0.5.0"'
+        - 'LLAMA_COMMIT="7fe450e19305b828c199d602c23a8337aaa1f03b"'
+        - 'LLAMA_SRC="$PROJECT_ROOT/.package-llama.cpp"'
+        - 'git init -q "$LLAMA_SRC"'
+        - 'git -C "$LLAMA_SRC" remote add origin "$LLAMA_REPO"'
+        - 'GIT_TERMINAL_PROMPT=0 git -C "$LLAMA_SRC" fetch --quiet --depth 1 origin "refs/tags/$LLAMA_VERSION:refs/tags/$LLAMA_VERSION"'
+        - 'ACTUAL_LLAMA_COMMIT="$(git -C "$LLAMA_SRC" rev-list -n 1 "$LLAMA_VERSION")"'
+        - 'test "$ACTUAL_LLAMA_COMMIT" = "$LLAMA_COMMIT" || { echo "[ERRO] commit inesperado do llama.cpp: $ACTUAL_LLAMA_COMMIT" >&2; exit 1; }'
+        - 'git -C "$LLAMA_SRC" checkout --quiet --detach "$ACTUAL_LLAMA_COMMIT"'
+        - 'cmake -S "$LLAMA_SRC" -B "$LLAMA_SRC/build" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF -DLLAMA_BUILD_COMMON=ON -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_APP=OFF -DLLAMA_BUILD_UI=OFF -DLLAMA_USE_PREBUILT_UI=OFF -DLLAMA_OPENSSL=OFF'
+        - 'BUILD_JOBS="$(nproc 2>/dev/null || printf 1)"; test "$BUILD_JOBS" -le 4 || BUILD_JOBS=4'
+        - 'cmake --build "$LLAMA_SRC/build" --config Release --target llama-server -j "$BUILD_JOBS"'
+        - 'install -m 0755 "$LLAMA_SRC/build/bin/llama-server" "$PROJECT_ROOT/bin/amd64/llama-server"'
+        - '"$PROJECT_ROOT/bin/amd64/llama-server" --help >/dev/null 2>&1'
+        - 'MODEL_URL="https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_0.gguf"'
+        - 'MODEL_SHA256="57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf"'
+        - 'MODEL_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/ai-bash-gen/Qwen3.5-0.8B-Q4_0.gguf"'
+        - 'mkdir -p "$(dirname "$MODEL_CACHE")"'
+        - 'if test -f "$MODEL_CACHE" && printf "%s  %s\n" "$MODEL_SHA256" "$MODEL_CACHE" | sha256sum -c - >/dev/null 2>&1; then echo "[build] reutilizando modelo em cache: $MODEL_CACHE"; else rm -f "$MODEL_CACHE" "$MODEL_CACHE.part"; curl --fail --location --retry 3 --retry-delay 2 --output "$MODEL_CACHE.part" "$MODEL_URL"; printf "%s  %s\n" "$MODEL_SHA256" "$MODEL_CACHE.part" | sha256sum -c -; mv "$MODEL_CACHE.part" "$MODEL_CACHE"; fi'
+        - 'install -m 0644 "$MODEL_CACHE" "$PROJECT_ROOT/bin/amd64/model.gguf"'
+        - 'test "$(LC_ALL=C head -c 4 "$PROJECT_ROOT/bin/amd64/model.gguf")" = "GGUF" || { echo "[ERRO] modelo não possui assinatura GGUF." >&2; exit 1; }'
+        - 'install -m 0755 "$PROJECT_ROOT/test-binary.sh" "$PROJECT_ROOT/bin/amd64/test-binary.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-generation.sh" "$PROJECT_ROOT/bin/amd64/test-generation.sh"'
+      output:
+        root: "bin/amd64"
+      tests:
+        enabled: true
+        commands:
+          - 'bash -n "$PROJECT_ROOT/install-binary.sh" "$PROJECT_ROOT/test-binary.sh" "$PROJECT_ROOT/test-installer.sh" "$PROJECT_ROOT/test-generation.sh"'
+          - '(cd "$PROJECT_ROOT/src/go" && go test ./...)'
+          - 'bash "$PROJECT_ROOT/test-installer.sh"'
+          - 'test -x "$OUTPUT_ROOT/ai-bash-gen"'
+          - 'test -x "$OUTPUT_ROOT/ai-bash-gen-generation-test"'
+          - 'test -x "$OUTPUT_ROOT/llama-server"'
+          - 'test -s "$OUTPUT_ROOT/model.gguf"'
+          - '"$OUTPUT_ROOT/llama-server" --help >/dev/null 2>&1'
+          - 'if ldd "$OUTPUT_ROOT/llama-server" 2>/dev/null | grep -q "not found"; then echo "[ERRO] llama-server possui biblioteca dinâmica ausente." >&2; exit 1; fi'
+          - 'printf "%s  %s\n" "57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf" "$OUTPUT_ROOT/model.gguf" | sha256sum -c -'
+          - '"$OUTPUT_ROOT/test-binary.sh" "$OUTPUT_ROOT/ai-bash-gen"'
+
+    "386":
+      enabled: false
+      debian_architecture: "i386"
+      description: "Desabilitado: runtime llama-server do pacote ainda não validado para i386."
+      commands: []
+      output:
+        root: "bin/386"
+
+    arm64:
+      enabled: false
+      debian_architecture: "arm64"
+      description: "Desabilitado: runtime llama-server do pacote ainda não validado para arm64."
+      commands: []
+      output:
+        root: "bin/arm64"
+
+    arm:
+      enabled: false
+      debian_architecture: "armhf"
+      description: "Desabilitado: runtime llama-server do pacote ainda não validado para armhf."
+      commands: []
+      output:
+        root: "bin/arm"
+
+    riscv64:
+      enabled: false
+      debian_architecture: "riscv64"
+      description: "Desabilitado: runtime llama-server do pacote ainda não validado para riscv64."
+      commands: []
+      output:
+        root: "bin/riscv64"
+
+    ppc64le:
+      enabled: false
+      debian_architecture: "ppc64el"
+      description: "Desabilitado: runtime llama-server do pacote ainda não validado para ppc64el."
+      commands: []
+      output:
+        root: "bin/ppc64le"
+
+    s390x:
+      enabled: false
+      debian_architecture: "s390x"
+      description: "Desabilitado: runtime llama-server do pacote ainda não validado para s390x."
+      commands: []
+      output:
+        root: "bin/s390x"
+
+    mips:
+      enabled: false
+      debian_architecture: null
+      description: "Arquitetura Debian alvo não confirmada."
+      commands: []
+      output:
+        root: "bin/mips"
+
+    mips64:
+      enabled: false
+      debian_architecture: null
+      description: "Arquitetura Debian alvo não confirmada."
+      commands: []
+      output:
+        root: "bin/mips64"
+
+    ppc64:
+      enabled: false
+      debian_architecture: null
+      description: "Arquitetura Debian alvo não confirmada."
+      commands: []
+      output:
+        root: "bin/ppc64"
+
+# ---------------------------------------------------------------------------
+# PUBLICAÇÃO
+# ---------------------------------------------------------------------------
+publication:
+  directories:
+    - path: "/usr/bin"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+      managed_by: "package"
+
+    - path: "/usr/lib/ai-bash-gen"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+      managed_by: "package"
+
+    - path: "/usr/lib/ai-bash-gen/tools"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+      managed_by: "package"
+
+    - path: "/usr/share/ai-bash-gen"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+      managed_by: "package"
+
+    - path: "/usr/share/ai-bash-gen/models"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+      managed_by: "package"
+
+    - path: "/etc/ai-bash-gen"
+      owner: "root"
+      group: "abioma"
+      mode: "0750"
+      managed_by: "package"
+
+    - path: "/var/lib/ai-bash-gen"
+      owner: "abioma-srv"
+      group: "abioma"
+      mode: "0750"
+      managed_by: "package"
+
+    - path: "/run/ai-bash-gen"
+      owner: "abioma-srv"
+      group: "abioma"
+      mode: "0750"
+      managed_by: "systemd"
+      ephemeral: true
+
+  files:
+    - source: "ai-bash-gen"
+      destination: "/usr/bin/ai-bash-gen"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+
+    - source: "llama-server"
+      destination: "/usr/lib/ai-bash-gen/llama-server"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+
+    - source: "model.gguf"
+      destination: "/usr/share/ai-bash-gen/models/model.gguf"
+      owner: "root"
+      group: "root"
+      mode: "0644"
+
+    - source: "ai-bash-gen-generation-test"
+      destination: "/usr/lib/ai-bash-gen/tools/ai-bash-gen-generation-test"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+
+    - source: "test-binary.sh"
+      destination: "/usr/lib/ai-bash-gen/tools/test-binary.sh"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+
+    - source: "test-generation.sh"
+      destination: "/usr/lib/ai-bash-gen/tools/test-generation.sh"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+
+  terminal_links: []
+  conffiles: []
+
+accounts:
+  groups:
+    - name: "abioma"
+      system: true
+      create_if_missing: true
+
+  users:
+    - name: "abioma-srv"
+      system: true
+      create_if_missing: true
+      primary_group: "abioma"
+      home: "/var/lib/ai-bash-gen"
+      create_home: false
+      shell: "/usr/sbin/nologin"
+
+permissions:
+  allowed_users:
+    - "usr45"
+  access_group: "abioma"
+  add_allowed_users_to_groups:
+    - "abioma"
+
+  filesystem:
+    - path: "/etc/ai-bash-gen"
+      owner: "root"
+      group: "abioma"
+      mode: "0750"
+
+    - path: "/var/lib/ai-bash-gen"
+      owner: "abioma-srv"
+      group: "abioma"
+      mode: "0750"
+
+    - path: "/run/ai-bash-gen"
+      owner: "abioma-srv"
+      group: "abioma"
+      mode: "0750"
+
+  runtime_objects:
+    - path: "/run/ai-bash-gen/routes/*.sock"
+      owner: "abioma-srv"
+      group: "abioma"
+      mode: "0660"
+
+# ---------------------------------------------------------------------------
+# SYSTEMD
+# ---------------------------------------------------------------------------
+services:
+  - name: "ai-bash-gen"
+    manager: "systemd"
+    unit_path: "/usr/lib/systemd/system/ai-bash-gen.service"
+    enabled: true
+    start_after_install: true
+
+    user: "abioma-srv"
+    group: "abioma"
+    working_directory: "/var/lib/ai-bash-gen"
+    umask: "0007"
+    supplementary_groups: []
+
+    description: "AI Bash Generator"
+    exec_start: "/usr/bin/ai-bash-gen --config /etc/ai-bash-gen/config.yaml"
+
+    configuration:
+      files:
+        - path: "/etc/ai-bash-gen/config.yaml"
+          conffile: true
+          owner: "root"
+          group: "abioma"
+          mode: "0640"
+          content: |
+            # ai-bash-gen - configuração padrão do pacote Debian
+            llama:
+              binary: /usr/lib/ai-bash-gen/llama-server
+              model: /usr/share/ai-bash-gen/models/model.gguf
+              context_size: 32768
+              startup_timeout: 2m
+              request_timeout: 10m
+              max_tokens: 4096
+              temperature: 0.2
+
+    environment:
+      AI_BASH_GEN_RUNTIME_DIR: "/run/ai-bash-gen"
+      AI_BASH_GEN_LOG_LEVEL: "debug"
+      AI_BASH_GEN_LLAMA_LOG_VERBOSITY: "5"
+
+    restart:
+      policy: "on-failure"
+      seconds: 2
+
+    runtime:
+      directory: "ai-bash-gen"
+      mode: "0750"
+
+    state:
+      directory: "ai-bash-gen"
+      mode: "0750"
+
+    hardening:
+      NoNewPrivileges: true
+      PrivateTmp: true
+      PrivateDevices: true
+      ProtectSystem: "strict"
+      ProtectHome: true
+      ProtectKernelTunables: true
+      ProtectKernelModules: true
+      ProtectControlGroups: true
+      RestrictAddressFamilies:
+        - "AF_UNIX"
+      LockPersonality: true
+      MemoryDenyWriteExecute: false
+
+# ---------------------------------------------------------------------------
+# TESTES PÓS-INSTALAÇÃO
+# ---------------------------------------------------------------------------
+post_install_checks:
+  enabled: true
+  script_path: "/usr/lib/ai-bash-gen/tools/post-install-checks.sh"
+  failure_policy: "fail"
+
+  retry:
+    attempts: 90
+    delay_seconds: 2
+
+  check_started_services: true
+  services: []
+
+  commands:
+    - 'test -x /usr/bin/ai-bash-gen'
+    - 'test -x /usr/lib/ai-bash-gen/llama-server'
+    - 'test -s /usr/share/ai-bash-gen/models/model.gguf'
+    - 'test -r /etc/ai-bash-gen/config.yaml'
+    - '/usr/bin/ai-bash-gen --config /etc/ai-bash-gen/config.yaml --check-dependencies'
+    - '/usr/bin/ai-bash-gen --show-paths | grep -Fxq "generate_socket=/run/ai-bash-gen/routes/generate.sock"'
+    - 'test -S /run/ai-bash-gen/internal/llama.sock'
+    - 'test -S /run/ai-bash-gen/routes/generate.sock'
+    - 'test "$(stat -c "%a" /run/ai-bash-gen/routes/generate.sock)" = "660"'
+    - 'test "$(stat -c "%G" /run/ai-bash-gen/routes/generate.sock)" = "abioma"'
+
+lifecycle:
+  pre_install: []
+
+  post_install:
+    - "create_system_accounts"
+    - "apply_directory_permissions"
+    - "authorize_allowed_users"
+    - "run_dependency_setup"
+    - "systemd_daemon_reload"
+    - "enable_services"
+    - "start_services"
+    - "run_post_install_checks"
+
+  pre_remove:
+    - "stop_services"
+
+  post_remove:
+    - "systemd_daemon_reload"
+
+  purge:
+    remove_system_users: false
+    remove_system_groups: false
+    remove_state: false
