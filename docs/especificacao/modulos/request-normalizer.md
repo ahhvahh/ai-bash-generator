@@ -5,7 +5,7 @@
 
 ## Objetivo
 
-Transformar linguagem natural em uma `NormalizedRequest` estruturada, ordenada e independente de implementação.
+Transformar linguagem natural em uma `NormalizedRequest` estruturada, independente de implementação e suficiente para localizar ou gerar uma solução para cada tarefa.
 
 ## Dependências
 
@@ -17,17 +17,15 @@ Transformar linguagem natural em uma `NormalizedRequest` estruturada, ordenada e
 
 ## Responsabilidades
 
-- decompor o objetivo em tasks pequenas e semanticamente independentes;
-- emitir as tasks em ordem lógica de processamento;
-- manter IDs únicos em `snake_case`;
-- ligar dependências reais de dados por `result_ref`;
-- permitir que um output tenha zero, um ou vários consumidores;
-- não criar dependências entre tasks independentes;
-- registrar dependências de controle por `depends_on` somente quando necessárias;
-- representar definições de entrada e saída como objetos JSON válidos nos campos descritivos do contrato atual;
-- identificar informação obrigatória ausente;
+- decompor o objetivo em tasks semanticamente independentes;
+- representar cada task por input lógico estruturado, instruction e output contract;
 - preservar valores literais fornecidos pelo usuário;
-- permanecer independente de Bash, capabilities, packages, databases e tools.
+- ligar dependências reais de dados por `result_ref`;
+- registrar dependências exclusivamente de controle por `depends_on`;
+- permitir zero, um ou vários consumidores para um output;
+- identificar informação obrigatória ausente;
+- não escolher capability, comando, aplicação, script, serviço ou forma de invocation;
+- não criar tasks artificiais apenas para serializar trabalho que pode ser independente.
 
 ## Entradas
 
@@ -37,45 +35,64 @@ O `request_id` é interno e não pertence ao conteúdo fornecido pelo cliente.
 
 ## Saídas
 
-`NormalizedRequest` com intenção, instrução canônica, sequência de tasks, contratos de entrada e saída, saída final, status e entradas ausentes.
+`NormalizedRequest` contendo intenção, instrução canônica, tasks, dependências, saída final, status e entradas ausentes.
 
-### Sequência
+### Modelo lógico de task
 
-A sequência é determinada pela ordem do campo repetido `NormalizedRequest.tasks`. A ordem é significativa e deve ser preservada pelo normalizador e pelos consumidores.
+Cada task representa conceitualmente:
 
-A ordem não substitui o grafo de dependências. `result_ref` continua sendo a fonte de verdade para dependência de dados e `depends_on` para dependência exclusivamente de controle.
+```text
+NormalizedTask
+├── input
+│   ├── valores literais
+│   └── result_ref para resultados anteriores
+├── instruction
+└── output_contract
+```
 
-### Fan-out e outputs independentes
+O **input** descreve os campos disponíveis e seus tipos.
 
-Um output não precisa ser consumido por outra task. Isso é válido quando ele representa um resultado solicitado pelo usuário ou um resultado intermediário independente.
+A **instruction** descreve objetivamente o processamento necessário, sem indicar como executá-lo.
 
-O mesmo output também pode alimentar múltiplas tasks posteriores. Cada consumidor aponta para o mesmo `result_ref`; o conteúdo não deve ser duplicado.
+O **output contract** descreve a estrutura esperada do resultado, incluindo objetos, listas e valores escalares.
 
-Quando vários outputs precisam compor a resposta final, deve existir uma task final de agregação lógica.
+### DAG e ordem
+
+As relações `result_ref` e `depends_on` formam o DAG da requisição.
+
+A ordem serializada de `tasks` deve ser estável e respeitar precedência, mas não significa execução obrigatoriamente sequencial. Tasks sem dependência entre si podem ser executadas em paralelo pelo artifact gerado.
+
+`result_ref` continua sendo a fonte de verdade para dependência de dados.
+
+### Fan-out e fan-in
+
+Um output pode alimentar vários consumidores sem duplicação lógica.
+
+Uma task pode receber resultados de múltiplos predecessores. Nesse caso cada campo de input aponta para o `result_ref` correspondente; a montagem do objeto final de entrada é responsabilidade determinística do pipeline, não do normalizador.
+
+Quando vários resultados precisam formar um novo significado funcional, essa transformação deve ser uma task explícita.
 
 ## Interfaces e contratos
 
 - [CTR-0001](../contratos/pipeline-protobuf.md)
-- [PRM-0001](../prompts/request-normalizer.md)
 
 ## Restrições
 
-O normalizador não gera Bash, não chama tools, não escolhe capability e não inventa informação.
+O normalizador não gera Bash, não chama tools, não pesquisa capabilities e não escolhe detalhes da ABI de execução.
 
-No contrato atual, `input_description` e `output_description` são strings. Até uma evolução do Protobuf, essas strings transportam um objeto JSON compacto e válido, em vez de prosa livre.
+A forma física atual do Protobuf pode manter campos legados de descrição durante a transição, mas a semântica normativa da task é input estruturado + instruction + output contract.
 
 ## Critérios de aceite
 
-- IDs e nomes de resultado são únicos.
-- A ordem de `tasks` representa a sequência lógica.
-- `result_ref` aponta somente para resultados anteriores existentes.
-- Um output pode ter zero, um ou vários consumidores.
-- O DAG de dependências é acíclico.
-- `final_output_ref` existe quando o status é READY.
-- `MISSING_INFORMATION` interrompe o pipeline antes da geração.
-- As definições JSON de entrada e saída são válidas e coerentes com `TaskInput`/`TaskOutput`.
-- Nenhuma implementação shell aparece nas tasks.
+- cada task possui objetivo único e contratos determináveis;
+- IDs e nomes de resultado são únicos;
+- `result_ref` aponta somente para resultados existentes;
+- o DAG é acíclico;
+- tasks independentes não recebem dependências artificiais;
+- `final_output_ref` existe quando o status é READY;
+- `MISSING_INFORMATION` interrompe o pipeline antes da busca;
+- nenhuma implementação shell ou detalhe de transporte aparece na intenção da task.
 
 ## Implementação relacionada
 
-A implementação de referência do normalizador está em `src/go/internal/pipeline/runner.go` no commit `main@a734af859d800487b51b5136d5772397dc12ffc6`. O prompt ainda está embutido no binário e deve ser externalizado conforme OPS-0001.
+A implementação atual ainda deve ser reconciliada com esta arquitetura-alvo antes de o documento avançar para `refined`.
