@@ -1084,6 +1084,14 @@ migrate_managed_runtime_defaults() {
 }
 
 
+run_as_postgres() {
+  if [[ "$EUID" -eq 0 ]]; then
+    runuser -u postgres -- "$@"
+  else
+    sudo -u postgres -- "$@"
+  fi
+}
+
 setup_postgresql_catalog() {
   local service_user="$1"
   local database_name="ai-bash-gen"
@@ -1096,24 +1104,24 @@ setup_postgresql_catalog() {
     "${SUDO[@]}" systemctl enable --now postgresql >/dev/null 2>&1 || die "não foi possível iniciar/habilitar PostgreSQL."
   fi
 
-  if ! "${SUDO[@]}" -u postgres psql -AtX -d postgres -v ON_ERROR_STOP=1 -v role="$service_user" \
+  if ! run_as_postgres psql -AtX -d postgres -v ON_ERROR_STOP=1 -v role="$service_user" \
       -c "SELECT 1 FROM pg_roles WHERE rolname = :'role';" | grep -Fxq 1; then
     info "criando role PostgreSQL: $service_user"
-    "${SUDO[@]}" -u postgres createuser --no-createdb --no-createrole --no-superuser "$service_user"
+    run_as_postgres createuser --no-createdb --no-createrole --no-superuser "$service_user"
   else
     info "role PostgreSQL já existe e será reutilizada: $service_user"
   fi
 
-  if ! "${SUDO[@]}" -u postgres psql -AtX -d postgres -v ON_ERROR_STOP=1 -v db="$database_name" \
+  if ! run_as_postgres psql -AtX -d postgres -v ON_ERROR_STOP=1 -v db="$database_name" \
       -c "SELECT 1 FROM pg_database WHERE datname = :'db';" | grep -Fxq 1; then
     info "criando banco PostgreSQL: $database_name"
-    "${SUDO[@]}" -u postgres createdb --owner="$service_user" "$database_name"
+    run_as_postgres createdb --owner="$service_user" "$database_name"
   else
     info "banco PostgreSQL já existe e será reutilizado: $database_name"
   fi
 
   info "aplicando schema idempotente do Capability Catalog..."
-  "${SUDO[@]}" -u postgres psql -X -v ON_ERROR_STOP=1 -v role="$service_user" -d "$database_name" <<'__AI_BASH_GEN_SQL__'
+  run_as_postgres psql -X -v ON_ERROR_STOP=1 -v role="$service_user" -d "$database_name" <<'__AI_BASH_GEN_SQL__'
 SET ROLE :"role";
 
 CREATE SCHEMA IF NOT EXISTS capability_catalog;
@@ -1161,7 +1169,7 @@ RESET ROLE;
 __AI_BASH_GEN_SQL__
 
   if [[ "$CREATE_SERVICE_ACCOUNT" == "yes" ]]; then
-    if ! "${SUDO[@]}" -u "$service_user" psql -X -At -h /var/run/postgresql -d "$database_name" \
+    if ! "${SUDO[@]}" runuser -u "$service_user" -- psql -X -At -h /var/run/postgresql -d "$database_name" \
         -c 'SELECT current_database();' | grep -Fxq "$database_name"; then
       die "o usuário de serviço não conseguiu conectar ao PostgreSQL via peer auth."
     fi
