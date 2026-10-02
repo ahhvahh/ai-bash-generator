@@ -5,53 +5,59 @@
 
 ## Objetivo
 
-Permitir no máximo uma correção do plano quando a primeira validação determinística falhar.
+Permitir uma correção controlada quando uma FUNCTION recém-gerada falhar na validação e a falha puder ser corrigida pelo gerador.
 
 ## Dependências
 
-- [MOD-0003 — Bash Generator](../modulos/bash-generator.md)
+- [MOD-0003 — Capability Function Generator](../modulos/capability-function-generator.md)
 - [MOD-0004 — Validator](../modulos/validator.md)
 - [CTR-0001 — Protobuf](../contratos/pipeline-protobuf.md)
+- [ADR-0013 — Sessão do gerador](../../adr/runtime/sessao-gerador.md)
 
 ## Gatilho
 
-O Validator retorna `valid=false` com issues estruturadas.
+O Validator rejeita uma FUNCTION recém-gerada com issues estruturadas elegíveis para correção.
 
 ## Pré-condições
 
-- existe um plano de geração;
-- a política permite uma tentativa de correção;
+- a falha pertence à capability gerada, não ao DAG normalizado ou a capability existente;
+- a política permite tentativa de correção;
 - o orçamento de turnos não foi excedido.
 
 ## Fluxo principal
 
-1. O Pipeline Manager recebe `ValidationIssue`.
-2. Envia ao gerador o contexto necessário e as issues.
-3. O gerador retorna plano corrigido.
-4. O Validator executa novamente a sequência completa de validação.
-5. Se válido, o fluxo segue para publicação/materialização.
-6. Se inválido, a requisição falha.
+1. O Pipeline Manager recebe as issues estruturadas.
+2. Envia ao Capability Function Generator somente a task afetada, contexto autorizado e issues.
+3. O gerador retorna nova versão candidata da FUNCTION.
+4. O Validator executa novamente as validações aplicáveis.
+5. Se válida, a capability volta ao conjunto resolvido.
+6. Se inválida, a requisição falha.
 
 ## Fluxos alternativos
 
-### Retry indisponível
+### Falha estrutural da requisição
 
-A requisição falha sem novo turno.
+Não retorna ao gerador. O pipeline falha ou solicita informação conforme o tipo da inconsistência.
+
+### Capability existente inválida
+
+Não é reescrita pelo gerador. A versão é rejeitada e tratada conforme regras do catálogo/policy.
 
 ## Falhas e tratamento
 
-A segunda falha encerra o processamento; não existe loop indefinido de autocorreção.
+A correção não cria loop indefinido. O limite final depende do ADR-0013.
 
 ## Resultado
 
-Plano corrigido validado ou falha estruturada.
+FUNCTION candidata corrigida e validada ou falha estruturada.
 
 ## BLOCKED
 
-O conteúdo exato do turno de correção depende do orçamento de contexto definido pelo ADR-0013.
+O número máximo de tentativas e o contexto exato de correção dependem do ADR-0013.
 
 ## Critérios de aceite
 
-- No máximo uma tentativa adicional.
-- Issues são estruturadas.
-- O artifact não é criado após validação inválida.
+- correção por LLM aplica-se somente à FUNCTION recém-gerada;
+- issues são estruturadas;
+- nenhuma task ou contrato é alterado para fazer a validação passar;
+- artifact não é criado enquanto existir function inválida.
