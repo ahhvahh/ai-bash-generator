@@ -1,7 +1,7 @@
 # Manutenção da inferência
 
 **ID:** OPS-0001  
-**Status:** specification
+**Status:** refinement
 
 ## Objetivo
 
