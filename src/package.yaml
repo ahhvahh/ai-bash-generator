@@ -1,15 +1,13 @@
 # Configuração de build e empacotamento Debian do ai-bash-generator.
-# Consumidores esperados:
-#   - build_master.sh      -> seção build
-#   - package-debian.sh    -> package, publication, dependencies, accounts,
-#                             permissions, services e lifecycle
+# Contrato compatível com o A-Bioma Debian Package Builder:
+# https://github.com/ahhvahh/a-bioma-pkg-debian
 #
-# O arquivo fica em ./src/package.yaml.
-schema: 2
+# Este arquivo fica em ./src/package.yaml e é a fonte de verdade para
+# compilação, testes, publicação e montagem do pacote Debian.
+schema: 1
 
 project:
   name: "ai-bash-gen"
-  root: ".."
 
   origin:
     repository: "https://github.com/ahhvahh/ai-bash-generator"
@@ -23,105 +21,20 @@ package:
   maintainer: "A-Bioma Build System <noreply@localhost>"
 
   version:
-    # Obtém a versão a partir das tags/commit do Git.
     strategy: "git"
     tag_prefix: "v"
     fallback: "0.0.0"
 
   description:
-    short: "Gerador de scripts Bash do ecossistema A-Bioma"
+    short: "Gerador local de scripts Bash do ecossistema A-Bioma"
     long: |
       Aplicação e serviço para geração local de scripts Bash utilizando
       agentes baseados em LLM, llama.cpp, Unix Domain Sockets e Protocol Buffers.
+      O pacote instala o daemon, ferramentas auxiliares e uma unit systemd.
 
-# ---------------------------------------------------------------------------
-# BUILD / COMPILAÇÃO
-# ---------------------------------------------------------------------------
-# Esta seção descreve SOMENTE como transformar o código-fonte em artefatos
-# prontos para empacotamento. Ela não define onde os arquivos serão instalados
-# no servidor; os destinos finais pertencem à seção "publication".
-#
-# O build_master.sh deve:
-#   1. ler esta seção;
-#   2. posicionar-se em "working_directory";
-#   3. receber/determinar a arquitetura que está sendo compilada;
-#   4. substituir a variável ${architecture} pelo target selecionado;
-#   5. executar os comandos na ordem cadastrada;
-#   6. interromper imediatamente se qualquer comando retornar erro;
-#   7. localizar o resultado usando "output.root" + "output.layout";
-#   8. entregar essa pasta ao processo de empacotamento.
-#
-# IMPORTANTE SOBRE ARQUITETURA:
-# Não cadastramos uma configuração completa para amd64, arm64 etc. quando
-# todos utilizam exatamente a mesma sequência de compilação. Nesse cenário
-# existe apenas "commands" e a variável ${architecture} é substituída em
-# tempo de execução.
-#
-# "architecture_overrides" existe apenas para exceções. Use-o somente quando
-# determinada arquitetura exigir comandos, variáveis de ambiente, toolchain
-# ou preparação diferente das demais.
-#
-# Exemplo de execução para amd64:
-#   architecture=amd64
-#   working_directory=..
-#   comando resultante: ./build.sh amd64
-#   saída esperada: ../bin/amd64/
-#
-# Exemplo de execução para arm64:
-#   architecture=arm64
-#   comando resultante: ./build.sh arm64
-#   saída esperada: ../bin/arm64/
-build:
-  # Diretório a partir do qual os comandos abaixo serão executados.
-  # O caminho é relativo ao diretório onde está este package.yaml.
-  # Como o YAML está em ./src/package.yaml, ".." representa a raiz do projeto.
-  working_directory: ".."
-
-  # Sequência padrão de compilação.
-  # Os comandos são executados na ordem informada.
-  # ${architecture} é uma variável resolvida pelo build_master.sh.
-  # Exemplos de valores: amd64, arm64, arm, 386, riscv64.
-  commands:
-    - "./build.sh ${architecture}"
-
-  # Sobrescritas específicas por arquitetura.
-  # O objeto vazio significa que atualmente nenhuma arquitetura precisa de
-  # tratamento diferente. Se uma entrada existir aqui, seus comandos substituem
-  # a sequência padrão apenas para aquela arquitetura.
-  architecture_overrides: {}
-  #
-  # Exemplo:
-  # architecture_overrides:
-  #   arm:
-  #     commands:
-  #       - "export GOARM=7"
-  #       - "./build.sh arm"
-  #
-  # Outro exemplo para uma toolchain específica:
-  #   riscv64:
-  #     commands:
-  #       - "export CC=riscv64-linux-gnu-gcc"
-  #       - "./build.sh riscv64"
-
-  output:
-    # Pasta raiz onde o build deposita os resultados.
-    # Este caminho também é relativo a "working_directory".
-    root: "bin"
-
-    # Subpasta que contém o resultado da arquitetura atual.
-    # Para architecture=amd64, o caminho resolvido será bin/amd64.
-    layout: "${architecture}"
-
-    # Exige que exista exatamente uma saída de arquitetura não vazia para
-    # o build processado. Isso ajuda a impedir que artefatos antigos de outra
-    # compilação sejam empacotados por engano.
-    selection: "exactly_one_nonempty"
-
-# ---------------------------------------------------------------------------
-# DEPENDÊNCIAS
-# ---------------------------------------------------------------------------
-# Dependências disponíveis em repositórios Debian devem ser declaradas aqui
-# para que apt/dpkg resolvam a instalação antes da configuração do pacote.
+# Dependências necessárias depois que o .deb estiver instalado.
+# Ferramentas exclusivas da compilação (Go e Git) são verificadas pelos
+# comandos de build e não são declaradas como dependências de runtime.
 dependencies:
   depends:
     - "bash"
@@ -143,28 +56,273 @@ dependencies:
   suggests: []
   pre_depends: []
 
-  # Etapas adicionais para dependências que não possam ser representadas
-  # adequadamente apenas por Depends/Recommends.
-  #
-  # Estes comandos NÃO devem executar apt/apt-get. Pacotes Debian devem ser
-  # declarados acima para evitar chamadas recursivas ao gerenciador de pacotes.
+  # O pacote não compila nem baixa llama.cpp durante o postinst.
+  # O runtime externo deve ser provisionado antes da ativação do serviço.
   setup:
     shell: "/bin/bash"
     stop_on_error: true
     commands:
       - name: "verificar-llama-server"
         when: "post_install"
-        if: "test ! -x /usr/lib/ai-bash-gen/llama-server"
+        if: "test ! -x /usr/local/lib/ai-bash-gen/llama-server"
         run: |
-          echo "[INFO] llama-server ainda não está instalado."
-          echo "[INFO] O provisionamento do llama.cpp deve ser executado pelo instalador/provisionador configurado para o ambiente."
+          echo "[AVISO] llama-server não está disponível em /usr/local/lib/ai-bash-gen/llama-server."
+          echo "[AVISO] Provisione llama.cpp e um modelo GGUF antes de habilitar/iniciar ai-bash-gen."
 
 # ---------------------------------------------------------------------------
-# PUBLICAÇÃO NO FILESYSTEM
+# BUILD
 # ---------------------------------------------------------------------------
-# Destinos seguem o layout Debian/FHS.
-# /run é temporário e deve ser criado em runtime (systemd), não incluído
-# fisicamente no arquivo .deb.
+# --src deve apontar para a raiz do repositório.
+# Os comandos abaixo reproduzem diretamente o build.sh do projeto, sem chamar
+# o script de build. O executor fornece PROJECT_ROOT, PACKAGE_YAML, BUILD_ARCH,
+# DEBIAN_ARCH e, durante os testes, OUTPUT_ROOT.
+build:
+  working_directory: "."
+
+  architectures:
+    amd64:
+      enabled: true
+      debian_architecture: "amd64"
+      description: "Linux x86-64; GOAMD64=v1 para compatibilidade ampla."
+      commands:
+        - 'command -v go >/dev/null 2>&1 || { echo "[ERRO] Go não encontrado no PATH." >&2; exit 1; }'
+        - 'test -f "$PROJECT_ROOT/src/go/go.mod" || { echo "[ERRO] go.mod não encontrado." >&2; exit 1; }'
+        - 'for f in install-binary.sh test-binary.sh test-installer.sh test-generation.sh; do test -f "$PROJECT_ROOT/$f" || { echo "[ERRO] arquivo obrigatório ausente: $f" >&2; exit 1; }; done'
+        - 'rm -rf "$PROJECT_ROOT/bin" && mkdir -p "$PROJECT_ROOT/bin/amd64"'
+        - 'COMMIT="$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || printf unknown)"'
+        - 'VERSION="$(git -C "$PROJECT_ROOT" describe --tags --always --dirty 2>/dev/null || printf dev)"'
+        - 'LDFLAGS="-s -w -X github.com/ahhvahh/ai-bash-generator/internal/buildinfo.Version=$VERSION -X github.com/ahhvahh/ai-bash-generator/internal/buildinfo.Commit=$COMMIT"'
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 go build -trimpath -ldflags "$LDFLAGS" -o "$PROJECT_ROOT/bin/amd64/ai-bash-gen" ./cmd/ai-bash-gen)'
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 go build -trimpath -o "$PROJECT_ROOT/bin/amd64/ai-bash-gen-generation-test" ./cmd/ai-bash-gen-generation-test)'
+        - 'install -m 0755 "$PROJECT_ROOT/install-binary.sh" "$PROJECT_ROOT/bin/amd64/install-binary.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-binary.sh" "$PROJECT_ROOT/bin/amd64/test-binary.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-installer.sh" "$PROJECT_ROOT/bin/amd64/test-installer.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-generation.sh" "$PROJECT_ROOT/bin/amd64/test-generation.sh"'
+      output:
+        root: "bin/amd64"
+      tests:
+        enabled: true
+        commands:
+          - 'bash -n "$PROJECT_ROOT/install-binary.sh" "$PROJECT_ROOT/test-binary.sh" "$PROJECT_ROOT/test-installer.sh" "$PROJECT_ROOT/test-generation.sh"'
+          - '(cd "$PROJECT_ROOT/src/go" && go test ./...)'
+          - 'bash "$PROJECT_ROOT/test-installer.sh"'
+          - 'test -x "$OUTPUT_ROOT/ai-bash-gen"'
+          - 'test -x "$OUTPUT_ROOT/ai-bash-gen-generation-test"'
+          - '"$OUTPUT_ROOT/test-binary.sh" "$OUTPUT_ROOT/ai-bash-gen"'
+
+    "386":
+      enabled: true
+      debian_architecture: "i386"
+      description: "Linux x86 32 bits."
+      commands:
+        - 'command -v go >/dev/null 2>&1 || { echo "[ERRO] Go não encontrado no PATH." >&2; exit 1; }'
+        - 'test -f "$PROJECT_ROOT/src/go/go.mod" || { echo "[ERRO] go.mod não encontrado." >&2; exit 1; }'
+        - 'for f in install-binary.sh test-binary.sh test-installer.sh test-generation.sh; do test -f "$PROJECT_ROOT/$f" || { echo "[ERRO] arquivo obrigatório ausente: $f" >&2; exit 1; }; done'
+        - 'rm -rf "$PROJECT_ROOT/bin" && mkdir -p "$PROJECT_ROOT/bin/386"'
+        - 'COMMIT="$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || printf unknown)"'
+        - 'VERSION="$(git -C "$PROJECT_ROOT" describe --tags --always --dirty 2>/dev/null || printf dev)"'
+        - 'LDFLAGS="-s -w -X github.com/ahhvahh/ai-bash-generator/internal/buildinfo.Version=$VERSION -X github.com/ahhvahh/ai-bash-generator/internal/buildinfo.Commit=$COMMIT"'
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=386 go build -trimpath -ldflags "$LDFLAGS" -o "$PROJECT_ROOT/bin/386/ai-bash-gen" ./cmd/ai-bash-gen)'
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=386 go build -trimpath -o "$PROJECT_ROOT/bin/386/ai-bash-gen-generation-test" ./cmd/ai-bash-gen-generation-test)'
+        - 'install -m 0755 "$PROJECT_ROOT/install-binary.sh" "$PROJECT_ROOT/bin/386/install-binary.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-binary.sh" "$PROJECT_ROOT/bin/386/test-binary.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-installer.sh" "$PROJECT_ROOT/bin/386/test-installer.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-generation.sh" "$PROJECT_ROOT/bin/386/test-generation.sh"'
+      output:
+        root: "bin/386"
+      tests:
+        enabled: true
+        commands:
+          - 'bash -n "$PROJECT_ROOT/install-binary.sh" "$PROJECT_ROOT/test-binary.sh" "$PROJECT_ROOT/test-installer.sh" "$PROJECT_ROOT/test-generation.sh"'
+          - '(cd "$PROJECT_ROOT/src/go" && go test ./...)'
+          - 'bash "$PROJECT_ROOT/test-installer.sh"'
+          - 'test -x "$OUTPUT_ROOT/ai-bash-gen"'
+          - 'test -x "$OUTPUT_ROOT/ai-bash-gen-generation-test"'
+          - '"$OUTPUT_ROOT/test-binary.sh" "$OUTPUT_ROOT/ai-bash-gen"'
+
+    arm64:
+      enabled: true
+      debian_architecture: "arm64"
+      description: "Linux ARM/AArch64 64 bits."
+      commands:
+        - 'command -v go >/dev/null 2>&1 || { echo "[ERRO] Go não encontrado no PATH." >&2; exit 1; }'
+        - 'test -f "$PROJECT_ROOT/src/go/go.mod" || { echo "[ERRO] go.mod não encontrado." >&2; exit 1; }'
+        - 'for f in install-binary.sh test-binary.sh test-installer.sh test-generation.sh; do test -f "$PROJECT_ROOT/$f" || { echo "[ERRO] arquivo obrigatório ausente: $f" >&2; exit 1; }; done'
+        - 'rm -rf "$PROJECT_ROOT/bin" && mkdir -p "$PROJECT_ROOT/bin/arm64"'
+        - 'COMMIT="$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || printf unknown)"'
+        - 'VERSION="$(git -C "$PROJECT_ROOT" describe --tags --always --dirty 2>/dev/null || printf dev)"'
+        - 'LDFLAGS="-s -w -X github.com/ahhvahh/ai-bash-generator/internal/buildinfo.Version=$VERSION -X github.com/ahhvahh/ai-bash-generator/internal/buildinfo.Commit=$COMMIT"'
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$LDFLAGS" -o "$PROJECT_ROOT/bin/arm64/ai-bash-gen" ./cmd/ai-bash-gen)'
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o "$PROJECT_ROOT/bin/arm64/ai-bash-gen-generation-test" ./cmd/ai-bash-gen-generation-test)'
+        - 'install -m 0755 "$PROJECT_ROOT/install-binary.sh" "$PROJECT_ROOT/bin/arm64/install-binary.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-binary.sh" "$PROJECT_ROOT/bin/arm64/test-binary.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-installer.sh" "$PROJECT_ROOT/bin/arm64/test-installer.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-generation.sh" "$PROJECT_ROOT/bin/arm64/test-generation.sh"'
+      output:
+        root: "bin/arm64"
+      tests:
+        enabled: true
+        commands:
+          - 'bash -n "$PROJECT_ROOT/install-binary.sh" "$PROJECT_ROOT/test-binary.sh" "$PROJECT_ROOT/test-installer.sh" "$PROJECT_ROOT/test-generation.sh"'
+          - '(cd "$PROJECT_ROOT/src/go" && go test ./...)'
+          - 'bash "$PROJECT_ROOT/test-installer.sh"'
+          - 'test -x "$OUTPUT_ROOT/ai-bash-gen"'
+          - 'test -x "$OUTPUT_ROOT/ai-bash-gen-generation-test"'
+          - '"$OUTPUT_ROOT/test-binary.sh" "$OUTPUT_ROOT/ai-bash-gen"'
+
+    arm:
+      enabled: true
+      debian_architecture: "armhf"
+      description: "Linux ARM 32 bits; GOARM=7 conforme build.sh."
+      commands:
+        - 'command -v go >/dev/null 2>&1 || { echo "[ERRO] Go não encontrado no PATH." >&2; exit 1; }'
+        - 'test -f "$PROJECT_ROOT/src/go/go.mod" || { echo "[ERRO] go.mod não encontrado." >&2; exit 1; }'
+        - 'for f in install-binary.sh test-binary.sh test-installer.sh test-generation.sh; do test -f "$PROJECT_ROOT/$f" || { echo "[ERRO] arquivo obrigatório ausente: $f" >&2; exit 1; }; done'
+        - 'rm -rf "$PROJECT_ROOT/bin" && mkdir -p "$PROJECT_ROOT/bin/arm"'
+        - 'COMMIT="$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || printf unknown)"'
+        - 'VERSION="$(git -C "$PROJECT_ROOT" describe --tags --always --dirty 2>/dev/null || printf dev)"'
+        - 'LDFLAGS="-s -w -X github.com/ahhvahh/ai-bash-generator/internal/buildinfo.Version=$VERSION -X github.com/ahhvahh/ai-bash-generator/internal/buildinfo.Commit=$COMMIT"'
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags "$LDFLAGS" -o "$PROJECT_ROOT/bin/arm/ai-bash-gen" ./cmd/ai-bash-gen)'
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -o "$PROJECT_ROOT/bin/arm/ai-bash-gen-generation-test" ./cmd/ai-bash-gen-generation-test)'
+        - 'install -m 0755 "$PROJECT_ROOT/install-binary.sh" "$PROJECT_ROOT/bin/arm/install-binary.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-binary.sh" "$PROJECT_ROOT/bin/arm/test-binary.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-installer.sh" "$PROJECT_ROOT/bin/arm/test-installer.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-generation.sh" "$PROJECT_ROOT/bin/arm/test-generation.sh"'
+      output:
+        root: "bin/arm"
+      tests:
+        enabled: true
+        commands:
+          - 'bash -n "$PROJECT_ROOT/install-binary.sh" "$PROJECT_ROOT/test-binary.sh" "$PROJECT_ROOT/test-installer.sh" "$PROJECT_ROOT/test-generation.sh"'
+          - '(cd "$PROJECT_ROOT/src/go" && go test ./...)'
+          - 'bash "$PROJECT_ROOT/test-installer.sh"'
+          - 'test -x "$OUTPUT_ROOT/ai-bash-gen"'
+          - 'test -x "$OUTPUT_ROOT/ai-bash-gen-generation-test"'
+          - '"$OUTPUT_ROOT/test-binary.sh" "$OUTPUT_ROOT/ai-bash-gen"'
+
+    riscv64:
+      enabled: true
+      debian_architecture: "riscv64"
+      description: "Linux RISC-V 64 bits."
+      commands:
+        - 'command -v go >/dev/null 2>&1 || { echo "[ERRO] Go não encontrado no PATH." >&2; exit 1; }'
+        - 'test -f "$PROJECT_ROOT/src/go/go.mod" || { echo "[ERRO] go.mod não encontrado." >&2; exit 1; }'
+        - 'for f in install-binary.sh test-binary.sh test-installer.sh test-generation.sh; do test -f "$PROJECT_ROOT/$f" || { echo "[ERRO] arquivo obrigatório ausente: $f" >&2; exit 1; }; done'
+        - 'rm -rf "$PROJECT_ROOT/bin" && mkdir -p "$PROJECT_ROOT/bin/riscv64"'
+        - 'COMMIT="$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || printf unknown)"'
+        - 'VERSION="$(git -C "$PROJECT_ROOT" describe --tags --always --dirty 2>/dev/null || printf dev)"'
+        - 'LDFLAGS="-s -w -X github.com/ahhvahh/ai-bash-generator/internal/buildinfo.Version=$VERSION -X github.com/ahhvahh/ai-bash-generator/internal/buildinfo.Commit=$COMMIT"'
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 go build -trimpath -ldflags "$LDFLAGS" -o "$PROJECT_ROOT/bin/riscv64/ai-bash-gen" ./cmd/ai-bash-gen)'
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 go build -trimpath -o "$PROJECT_ROOT/bin/riscv64/ai-bash-gen-generation-test" ./cmd/ai-bash-gen-generation-test)'
+        - 'install -m 0755 "$PROJECT_ROOT/install-binary.sh" "$PROJECT_ROOT/bin/riscv64/install-binary.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-binary.sh" "$PROJECT_ROOT/bin/riscv64/test-binary.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-installer.sh" "$PROJECT_ROOT/bin/riscv64/test-installer.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-generation.sh" "$PROJECT_ROOT/bin/riscv64/test-generation.sh"'
+      output:
+        root: "bin/riscv64"
+      tests:
+        enabled: true
+        commands:
+          - 'bash -n "$PROJECT_ROOT/install-binary.sh" "$PROJECT_ROOT/test-binary.sh" "$PROJECT_ROOT/test-installer.sh" "$PROJECT_ROOT/test-generation.sh"'
+          - '(cd "$PROJECT_ROOT/src/go" && go test ./...)'
+          - 'bash "$PROJECT_ROOT/test-installer.sh"'
+          - 'test -x "$OUTPUT_ROOT/ai-bash-gen"'
+          - 'test -x "$OUTPUT_ROOT/ai-bash-gen-generation-test"'
+          - '"$OUTPUT_ROOT/test-binary.sh" "$OUTPUT_ROOT/ai-bash-gen"'
+
+    ppc64le:
+      enabled: true
+      debian_architecture: "ppc64el"
+      description: "Linux PowerPC 64 bits little-endian."
+      commands:
+        - 'command -v go >/dev/null 2>&1 || { echo "[ERRO] Go não encontrado no PATH." >&2; exit 1; }'
+        - 'test -f "$PROJECT_ROOT/src/go/go.mod" || { echo "[ERRO] go.mod não encontrado." >&2; exit 1; }'
+        - 'for f in install-binary.sh test-binary.sh test-installer.sh test-generation.sh; do test -f "$PROJECT_ROOT/$f" || { echo "[ERRO] arquivo obrigatório ausente: $f" >&2; exit 1; }; done'
+        - 'rm -rf "$PROJECT_ROOT/bin" && mkdir -p "$PROJECT_ROOT/bin/ppc64le"'
+        - 'COMMIT="$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || printf unknown)"'
+        - 'VERSION="$(git -C "$PROJECT_ROOT" describe --tags --always --dirty 2>/dev/null || printf dev)"'
+        - 'LDFLAGS="-s -w -X github.com/ahhvahh/ai-bash-generator/internal/buildinfo.Version=$VERSION -X github.com/ahhvahh/ai-bash-generator/internal/buildinfo.Commit=$COMMIT"'
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=ppc64le go build -trimpath -ldflags "$LDFLAGS" -o "$PROJECT_ROOT/bin/ppc64le/ai-bash-gen" ./cmd/ai-bash-gen)'
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=ppc64le go build -trimpath -o "$PROJECT_ROOT/bin/ppc64le/ai-bash-gen-generation-test" ./cmd/ai-bash-gen-generation-test)'
+        - 'install -m 0755 "$PROJECT_ROOT/install-binary.sh" "$PROJECT_ROOT/bin/ppc64le/install-binary.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-binary.sh" "$PROJECT_ROOT/bin/ppc64le/test-binary.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-installer.sh" "$PROJECT_ROOT/bin/ppc64le/test-installer.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-generation.sh" "$PROJECT_ROOT/bin/ppc64le/test-generation.sh"'
+      output:
+        root: "bin/ppc64le"
+      tests:
+        enabled: true
+        commands:
+          - 'bash -n "$PROJECT_ROOT/install-binary.sh" "$PROJECT_ROOT/test-binary.sh" "$PROJECT_ROOT/test-installer.sh" "$PROJECT_ROOT/test-generation.sh"'
+          - '(cd "$PROJECT_ROOT/src/go" && go test ./...)'
+          - 'bash "$PROJECT_ROOT/test-installer.sh"'
+          - 'test -x "$OUTPUT_ROOT/ai-bash-gen"'
+          - 'test -x "$OUTPUT_ROOT/ai-bash-gen-generation-test"'
+          - '"$OUTPUT_ROOT/test-binary.sh" "$OUTPUT_ROOT/ai-bash-gen"'
+
+    s390x:
+      enabled: true
+      debian_architecture: "s390x"
+      description: "Linux IBM Z / s390x."
+      commands:
+        - 'command -v go >/dev/null 2>&1 || { echo "[ERRO] Go não encontrado no PATH." >&2; exit 1; }'
+        - 'test -f "$PROJECT_ROOT/src/go/go.mod" || { echo "[ERRO] go.mod não encontrado." >&2; exit 1; }'
+        - 'for f in install-binary.sh test-binary.sh test-installer.sh test-generation.sh; do test -f "$PROJECT_ROOT/$f" || { echo "[ERRO] arquivo obrigatório ausente: $f" >&2; exit 1; }; done'
+        - 'rm -rf "$PROJECT_ROOT/bin" && mkdir -p "$PROJECT_ROOT/bin/s390x"'
+        - 'COMMIT="$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || printf unknown)"'
+        - 'VERSION="$(git -C "$PROJECT_ROOT" describe --tags --always --dirty 2>/dev/null || printf dev)"'
+        - 'LDFLAGS="-s -w -X github.com/ahhvahh/ai-bash-generator/internal/buildinfo.Version=$VERSION -X github.com/ahhvahh/ai-bash-generator/internal/buildinfo.Commit=$COMMIT"'
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=s390x go build -trimpath -ldflags "$LDFLAGS" -o "$PROJECT_ROOT/bin/s390x/ai-bash-gen" ./cmd/ai-bash-gen)'
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=s390x go build -trimpath -o "$PROJECT_ROOT/bin/s390x/ai-bash-gen-generation-test" ./cmd/ai-bash-gen-generation-test)'
+        - 'install -m 0755 "$PROJECT_ROOT/install-binary.sh" "$PROJECT_ROOT/bin/s390x/install-binary.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-binary.sh" "$PROJECT_ROOT/bin/s390x/test-binary.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-installer.sh" "$PROJECT_ROOT/bin/s390x/test-installer.sh"'
+        - 'install -m 0755 "$PROJECT_ROOT/test-generation.sh" "$PROJECT_ROOT/bin/s390x/test-generation.sh"'
+      output:
+        root: "bin/s390x"
+      tests:
+        enabled: true
+        commands:
+          - 'bash -n "$PROJECT_ROOT/install-binary.sh" "$PROJECT_ROOT/test-binary.sh" "$PROJECT_ROOT/test-installer.sh" "$PROJECT_ROOT/test-generation.sh"'
+          - '(cd "$PROJECT_ROOT/src/go" && go test ./...)'
+          - 'bash "$PROJECT_ROOT/test-installer.sh"'
+          - 'test -x "$OUTPUT_ROOT/ai-bash-gen"'
+          - 'test -x "$OUTPUT_ROOT/ai-bash-gen-generation-test"'
+          - '"$OUTPUT_ROOT/test-binary.sh" "$OUTPUT_ROOT/ai-bash-gen"'
+
+    # O build.sh também compila os alvos abaixo, mas o empacotamento permanece
+    # desabilitado enquanto o mapeamento Debian de destino não for confirmado.
+    mips:
+      enabled: false
+      debian_architecture: null
+      description: "GOARCH=mips (big-endian); arquitetura Debian alvo não confirmada."
+      commands:
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=mips go build -trimpath -o "$PROJECT_ROOT/bin/mips/ai-bash-gen" ./cmd/ai-bash-gen)'
+      output:
+        root: "bin/mips"
+
+    mips64:
+      enabled: false
+      debian_architecture: null
+      description: "GOARCH=mips64 (big-endian); arquitetura Debian alvo não confirmada."
+      commands:
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=mips64 go build -trimpath -o "$PROJECT_ROOT/bin/mips64/ai-bash-gen" ./cmd/ai-bash-gen)'
+      output:
+        root: "bin/mips64"
+
+    ppc64:
+      enabled: false
+      debian_architecture: null
+      description: "GOARCH=ppc64 big-endian; habilitar somente com destino Debian confirmado."
+      commands:
+        - '(cd "$PROJECT_ROOT/src/go" && CGO_ENABLED=0 GOOS=linux GOARCH=ppc64 go build -trimpath -o "$PROJECT_ROOT/bin/ppc64/ai-bash-gen" ./cmd/ai-bash-gen)'
+      output:
+        root: "bin/ppc64"
+
+# ---------------------------------------------------------------------------
+# PUBLICAÇÃO
+# ---------------------------------------------------------------------------
+# source é relativo ao output.root da arquitetura selecionada.
 publication:
   directories:
     - path: "/usr/bin"
@@ -174,6 +332,12 @@ publication:
       managed_by: "package"
 
     - path: "/usr/lib/ai-bash-gen"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+      managed_by: "package"
+
+    - path: "/usr/lib/ai-bash-gen/tools"
       owner: "root"
       group: "root"
       mode: "0755"
@@ -198,26 +362,6 @@ publication:
       managed_by: "systemd"
       ephemeral: true
 
-    - path: "/run/ai-bash-gen/routes"
-      owner: "abioma-srv"
-      group: "abioma"
-      mode: "0750"
-      managed_by: "application"
-      ephemeral: true
-
-    - path: "/run/ai-bash-gen/internal"
-      owner: "abioma-srv"
-      group: "abioma"
-      mode: "0700"
-      managed_by: "application"
-      ephemeral: true
-
-    - path: "/usr/lib/systemd/system"
-      owner: "root"
-      group: "root"
-      mode: "0755"
-      managed_by: "package"
-
   files:
     - source: "ai-bash-gen"
       destination: "/usr/bin/ai-bash-gen"
@@ -231,14 +375,14 @@ publication:
       group: "root"
       mode: "0755"
 
-    - source: "test-binary.sh"
-      destination: "/usr/lib/ai-bash-gen/tools/test-binary.sh"
+    - source: "install-binary.sh"
+      destination: "/usr/lib/ai-bash-gen/tools/install-binary.sh"
       owner: "root"
       group: "root"
       mode: "0755"
 
-    - source: "test-generation.sh"
-      destination: "/usr/lib/ai-bash-gen/tools/test-generation.sh"
+    - source: "test-binary.sh"
+      destination: "/usr/lib/ai-bash-gen/tools/test-binary.sh"
       owner: "root"
       group: "root"
       mode: "0755"
@@ -249,18 +393,18 @@ publication:
       group: "root"
       mode: "0755"
 
-  conffiles:
-    - "/etc/ai-bash-gen/config.yaml"
+    - source: "test-generation.sh"
+      destination: "/usr/lib/ai-bash-gen/tools/test-generation.sh"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+
+  terminal_links: []
+  conffiles: []
 
 # ---------------------------------------------------------------------------
-# CONTAS DE SISTEMA
+# CONTAS E PERMISSÕES
 # ---------------------------------------------------------------------------
-# Convenção do ambiente A-Bioma:
-#   - abioma-srv: usuário técnico usado para executar serviços/daemons;
-#   - abioma:     grupo compartilhado usado para conceder acesso controlado;
-#   - usr45:      usuário convidado/cliente autorizado a consumir o serviço.
-#
-# O usuário de serviço não deve possuir login interativo.
 accounts:
   groups:
     - name: "abioma"
@@ -276,24 +420,14 @@ accounts:
       create_home: false
       shell: "/usr/sbin/nologin"
 
-# ---------------------------------------------------------------------------
-# AUTORIZAÇÃO / USUÁRIOS COM ACESSO
-# ---------------------------------------------------------------------------
 permissions:
-  # Usuários locais autorizados a consumir a aplicação/serviço.
-  # O empacotador/instalador deve validar que o usuário existe antes de
-  # adicioná-lo ao grupo.
-  # Usuários convidados/clientes que terão acesso às interfaces protegidas
-  # pelo grupo definido em "access_group".
-  # O usuário deve existir no servidor; o instalador não deve criá-lo
-  # automaticamente como conta de login.
+  # Conta humana já declarada na configuração anterior deste projeto.
+  # O pacote somente adiciona a conta existente ao grupo; não cria login.
   allowed_users:
     - "usr45"
 
-  # Grupo utilizado para liberar acesso à aplicação, diretórios e sockets.
   access_group: "abioma"
 
-  # Cada usuário de "allowed_users" será incluído nos grupos abaixo.
   add_allowed_users_to_groups:
     - "abioma"
 
@@ -313,11 +447,6 @@ permissions:
       group: "abioma"
       mode: "0750"
 
-    - path: "/run/ai-bash-gen/routes"
-      owner: "abioma-srv"
-      group: "abioma"
-      mode: "0750"
-
   runtime_objects:
     - path: "/run/ai-bash-gen/routes/*.sock"
       owner: "abioma-srv"
@@ -325,21 +454,44 @@ permissions:
       mode: "0660"
 
 # ---------------------------------------------------------------------------
-# SERVIÇO
+# SYSTEMD
 # ---------------------------------------------------------------------------
 services:
   - name: "ai-bash-gen"
     manager: "systemd"
     unit_path: "/usr/lib/systemd/system/ai-bash-gen.service"
-    enabled: true
-    start_after_install: true
 
-    # Serviços do ecossistema A-Bioma executam com esta identidade técnica.
+    # O pacote não provisiona llama.cpp nem o modelo GGUF; por isso instala a
+    # unit, mas não a habilita/inicia automaticamente.
+    enabled: false
+    start_after_install: false
+
     user: "abioma-srv"
     group: "abioma"
+    working_directory: "/var/lib/ai-bash-gen"
+    umask: "0007"
+    supplementary_groups: []
 
     description: "AI Bash Generator"
     exec_start: "/usr/bin/ai-bash-gen --config /etc/ai-bash-gen/config.yaml"
+
+    configuration:
+      files:
+        - path: "/etc/ai-bash-gen/config.yaml"
+          conffile: true
+          owner: "root"
+          group: "abioma"
+          mode: "0640"
+          content: |
+            # ai-bash-gen - configuração bootstrap
+            llama:
+              binary: /usr/local/lib/ai-bash-gen/llama-server
+              model: /var/lib/ai-bash-gen/models/model.gguf
+              context_size: 32768
+              startup_timeout: 2m
+              request_timeout: 10m
+              max_tokens: 4096
+              temperature: 0.2
 
     environment:
       AI_BASH_GEN_RUNTIME_DIR: "/run/ai-bash-gen"
@@ -373,9 +525,27 @@ services:
       MemoryDenyWriteExecute: false
 
 # ---------------------------------------------------------------------------
-# CICLO DE INSTALAÇÃO
+# TESTES PÓS-INSTALAÇÃO
 # ---------------------------------------------------------------------------
-# O package-debian.sh pode gerar os maintainer scripts a partir destas etapas.
+post_install_checks:
+  enabled: true
+  script_path: "/usr/lib/ai-bash-gen/tools/post-install-checks.sh"
+  failure_policy: "warn"
+
+  retry:
+    attempts: 5
+    delay_seconds: 2
+
+  check_started_services: true
+  services: []
+
+  commands:
+    - 'test -x /usr/bin/ai-bash-gen'
+    - 'test -r /etc/ai-bash-gen/config.yaml'
+    - '/usr/bin/ai-bash-gen --show-paths | grep -Fxq "generate_socket=/run/ai-bash-gen/routes/generate.sock"'
+    - '/usr/bin/ai-bash-gen --version >/dev/null'
+
+# Ações declarativas reconhecidas pelo empacotador.
 lifecycle:
   pre_install: []
 
@@ -387,6 +557,7 @@ lifecycle:
     - "systemd_daemon_reload"
     - "enable_services"
     - "start_services"
+    - "run_post_install_checks"
 
   pre_remove:
     - "stop_services"
@@ -395,7 +566,6 @@ lifecycle:
     - "systemd_daemon_reload"
 
   purge:
-    # Conta e dados persistentes não são apagados automaticamente.
     remove_system_users: false
     remove_system_groups: false
     remove_state: false
