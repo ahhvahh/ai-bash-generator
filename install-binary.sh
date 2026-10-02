@@ -398,7 +398,10 @@ select_or_download_model() {
     return 0
   fi
 
-  detected="$(detect_model_default)"
+  detected="$target"
+  if [[ "$target_name" == "model.gguf" ]]; then
+    detected="$(detect_model_default)"
+  fi
   if validate_model_source "$target" >/dev/null 2>&1; then
     detected="$target"
   fi
