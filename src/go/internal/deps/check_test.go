@@ -24,23 +24,31 @@ func TestValidateAcceptsCompatibleRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := config.Config{Llama: config.LlamaConfig{
-		Binary: llama, Model: model, ContextSize: 1024,
-		StartupTimeout: "1s", RequestTimeout: "1s",
-		MaxTokens: 128, Temperature: 0.1,
-	}}
+	cfg := config.Config{
+		Llama: config.LlamaConfig{
+			Binary: llama, Model: model, ContextSize: 1024,
+			StartupTimeout: "1s", RequestTimeout: "1s",
+			MaxTokens: 128, Temperature: 0.1,
+		},
+		Normalizer: config.AgentConfig{Model: model, MaxTokens: 64, Temperature: 0.1},
+		Generator: config.AgentConfig{Model: model, MaxTokens: 128, Temperature: 0.1},
+	}
 	if err := Validate(cfg); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestValidateRejectsMissingLlamaAndModel(t *testing.T) {
-	cfg := config.Config{Llama: config.LlamaConfig{
-		Binary: "/missing/llama-server",
-		Model: "/missing/model.gguf",
-		ContextSize: 1024, StartupTimeout: "1s", RequestTimeout: "1s",
-		MaxTokens: 128, Temperature: 0.1,
-	}}
+	cfg := config.Config{
+		Llama: config.LlamaConfig{
+			Binary: "/missing/llama-server",
+			Model: "/missing/model.gguf",
+			ContextSize: 1024, StartupTimeout: "1s", RequestTimeout: "1s",
+			MaxTokens: 128, Temperature: 0.1,
+		},
+		Normalizer: config.AgentConfig{Model: "/missing/normalizer.gguf", MaxTokens: 64, Temperature: 0.1},
+		Generator: config.AgentConfig{Model: "/missing/generator.gguf", MaxTokens: 128, Temperature: 0.1},
+	}
 	if err := Validate(cfg); err == nil {
 		t.Fatal("esperava erro")
 	}
