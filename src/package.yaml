@@ -1,112 +1,341 @@
-# Exemplo real para o projeto ai-bash-generator.
-# Sugestão de localização no repositório: ./src/package.yaml
-schema: 1
+# Configuração de build e empacotamento Debian do ai-bash-generator.
+# Consumidores esperados:
+#   - build_master.sh      -> seção build
+#   - package-debian.sh    -> package, publication, dependencies, accounts,
+#                             permissions, services e lifecycle
+#
+# O arquivo fica em ./src/package.yaml.
+schema: 2
 
 project:
-  # Resolvido relativamente à pasta onde este YAML estiver.
-  # Se salvo em ./src/package.yaml, ".." aponta para a raiz do repositório.
+  name: "ai-bash-gen"
   root: ".."
+
+  origin:
+    repository: "https://github.com/ahhvahh/ai-bash-generator"
+    homepage: "https://github.com/ahhvahh/ai-bash-generator"
+    source_type: "git"
 
 package:
   name: "ai-bash-gen"
-
-  # Usa a mesma origem conceitual do build.sh: tags/commit Git.
-  # Exemplos:
-  #   v1.2.0           -> 1.2.0
-  #   v1.2.0-3-gabc123 -> 1.2.0+3.gabc123
-  #   abc123           -> 0.0.0+git.abc123
-  version:
-    strategy: "git"
-    fallback: "0.0.0"
-
   section: "utils"
   priority: "optional"
   maintainer: "A-Bioma Build System <noreply@localhost>"
-  homepage: "https://github.com/ahhvahh/ai-bash-generator"
-  depends: []
+
+  version:
+    # Obtém a versão a partir das tags/commit do Git.
+    strategy: "git"
+    tag_prefix: "v"
+    fallback: "0.0.0"
 
   description:
     short: "Gerador de scripts Bash do ecossistema A-Bioma"
     long: |
-      Distribuição compilada do ai-bash-gen.
-      O pacote contém o binário e os arquivos auxiliares aprovados pelo build.
+      Aplicação e serviço para geração local de scripts Bash utilizando
+      agentes baseados em LLM, llama.cpp, Unix Domain Sockets e Protocol Buffers.
 
-source:
-  # O build.sh enviado limpa ./bin antes de cada compilação. Por isso o
-  # empacotador exige exatamente UMA destas pastas existente e não vazia.
-  selection: "exactly_one_nonempty"
+# ---------------------------------------------------------------------------
+# BUILD
+# ---------------------------------------------------------------------------
+# Arquitetura não precisa ser cadastrada individualmente quando o comando
+# de compilação é o mesmo. O build_master informa ${architecture}.
+#
+# Somente arquiteturas que precisem de uma sequência diferente devem aparecer
+# em architecture_overrides.
+build:
+  working_directory: ".."
 
-  architectures:
-    amd64:
-      path: "bin/amd64"
-      debian: "amd64"
+  commands:
+    - "./build.sh ${architecture}"
 
-    "386":
-      path: "bin/386"
-      debian: "i386"
+  architecture_overrides: {}
+  # Exemplo:
+  # architecture_overrides:
+  #   arm:
+  #     commands:
+  #       - "export GOARM=7"
+  #       - "./build.sh arm"
 
-    arm64:
-      path: "bin/arm64"
-      debian: "arm64"
+  output:
+    # O build.sh atual gera bin/<arquitetura>/.
+    root: "bin"
+    layout: "${architecture}"
+    selection: "exactly_one_nonempty"
 
-    arm:
-      path: "bin/arm"
-      debian: "armhf"
+# ---------------------------------------------------------------------------
+# DEPENDÊNCIAS
+# ---------------------------------------------------------------------------
+# Dependências disponíveis em repositórios Debian devem ser declaradas aqui
+# para que apt/dpkg resolvam a instalação antes da configuração do pacote.
+dependencies:
+  depends:
+    - "bash"
+    - "coreutils"
+    - "grep"
+    - "mawk"
+    - "passwd"
+    - "util-linux"
+    - "libc-bin"
+    - "systemd"
+    - "file"
+    - "binutils"
+    - "findutils"
+    - "ca-certificates"
 
-    riscv64:
-      path: "bin/riscv64"
-      debian: "riscv64"
+  recommends:
+    - "curl"
 
-    ppc64:
-      path: "bin/ppc64"
-      debian: "ppc64"
+  suggests: []
+  pre_depends: []
 
-    ppc64le:
-      path: "bin/ppc64le"
-      debian: "ppc64el"
+  # Etapas adicionais para dependências que não possam ser representadas
+  # adequadamente apenas por Depends/Recommends.
+  #
+  # Estes comandos NÃO devem executar apt/apt-get. Pacotes Debian devem ser
+  # declarados acima para evitar chamadas recursivas ao gerenciador de pacotes.
+  setup:
+    shell: "/bin/bash"
+    stop_on_error: true
+    commands:
+      - name: "verificar-llama-server"
+        when: "post_install"
+        if: "test ! -x /usr/lib/ai-bash-gen/llama-server"
+        run: |
+          echo "[INFO] llama-server ainda não está instalado."
+          echo "[INFO] O provisionamento do llama.cpp deve ser executado pelo instalador/provisionador configurado para o ambiente."
 
-    s390x:
-      path: "bin/s390x"
-      debian: "s390x"
+# ---------------------------------------------------------------------------
+# PUBLICAÇÃO NO FILESYSTEM
+# ---------------------------------------------------------------------------
+# Destinos seguem o layout Debian/FHS.
+# /run é temporário e deve ser criado em runtime (systemd), não incluído
+# fisicamente no arquivo .deb.
+publication:
+  directories:
+    - path: "/usr/bin"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+      managed_by: "package"
 
-    # O build.sh também oferece mips e mips64, mas não os mapeamos
-    # automaticamente: GOARCH=mips/mips64 é big-endian, enquanto os nomes
-    # Debian atuais mais comuns são mipsel/mips64el. O mapeamento deve ser
-    # definido explicitamente quando o build usar a ABI/endian compatível.
-    mips:
-      enabled: false
-      path: "bin/mips"
-      debian: "mipsel"
+    - path: "/usr/lib/ai-bash-gen"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+      managed_by: "package"
 
-    mips64:
-      enabled: false
-      path: "bin/mips64"
-      debian: "mips64el"
+    - path: "/etc/ai-bash-gen"
+      owner: "root"
+      group: "ai-bash-gen"
+      mode: "0750"
+      managed_by: "package"
 
-install:
-  # Preserva todo o conteúdo produzido pelo build.sh:
-  #   ai-bash-gen
-  #   install-binary.sh
-  #   test-binary.sh
-  #   test-installer.sh
-  #   ai-bash-gen-generation-test
-  #   test-generation.sh
-  trees:
-    - from: "."
-      to: "/opt/ai-bash-gen"
+    - path: "/var/lib/ai-bash-gen"
+      owner: "ai-bash-gen"
+      group: "ai-bash-gen"
+      mode: "0750"
+      managed_by: "package"
 
-  # Expõe o executável principal no PATH sem duplicar o binário.
-  links:
-    - path: "/usr/local/bin/ai-bash-gen"
-      target: "/opt/ai-bash-gen/ai-bash-gen"
+    - path: "/run/ai-bash-gen"
+      owner: "ai-bash-gen"
+      group: "ai-bash-gen"
+      mode: "0750"
+      managed_by: "systemd"
+      ephemeral: true
 
-  files: []
-  conffiles: []
+    - path: "/run/ai-bash-gen/routes"
+      owner: "ai-bash-gen"
+      group: "ai-bash-gen"
+      mode: "0750"
+      managed_by: "application"
+      ephemeral: true
 
-# O empacotador aceita os quatro scripts nativos de manutenção do dpkg.
-# Caminhos são relativos à raiz definida em project.root.
-control_scripts:
-  preinst: null
-  postinst: null
-  prerm: null
-  postrm: null
+    - path: "/run/ai-bash-gen/internal"
+      owner: "ai-bash-gen"
+      group: "ai-bash-gen"
+      mode: "0700"
+      managed_by: "application"
+      ephemeral: true
+
+    - path: "/usr/lib/systemd/system"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+      managed_by: "package"
+
+  files:
+    - source: "ai-bash-gen"
+      destination: "/usr/bin/ai-bash-gen"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+
+    - source: "ai-bash-gen-generation-test"
+      destination: "/usr/lib/ai-bash-gen/ai-bash-gen-generation-test"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+
+    - source: "test-binary.sh"
+      destination: "/usr/lib/ai-bash-gen/tools/test-binary.sh"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+
+    - source: "test-generation.sh"
+      destination: "/usr/lib/ai-bash-gen/tools/test-generation.sh"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+
+    - source: "test-installer.sh"
+      destination: "/usr/lib/ai-bash-gen/tools/test-installer.sh"
+      owner: "root"
+      group: "root"
+      mode: "0755"
+
+  conffiles:
+    - "/etc/ai-bash-gen/config.yaml"
+
+# ---------------------------------------------------------------------------
+# CONTAS DE SISTEMA
+# ---------------------------------------------------------------------------
+accounts:
+  groups:
+    - name: "ai-bash-gen"
+      system: true
+      create_if_missing: true
+
+  users:
+    - name: "ai-bash-gen"
+      system: true
+      create_if_missing: true
+      primary_group: "ai-bash-gen"
+      home: "/var/lib/ai-bash-gen"
+      create_home: false
+      shell: "/usr/sbin/nologin"
+
+      # Para novos pacotes Debian, a política recomenda nomes de contas
+      # de sistema iniciando com "_". Mantemos "ai-bash-gen" aqui para
+      # compatibilidade com o instalador e instalações atuais.
+      debian_recommended_name: "_ai-bash-gen"
+
+# ---------------------------------------------------------------------------
+# AUTORIZAÇÃO / USUÁRIOS COM ACESSO
+# ---------------------------------------------------------------------------
+permissions:
+  # Usuários locais autorizados a consumir a aplicação/serviço.
+  # O empacotador/instalador deve validar que o usuário existe antes de
+  # adicioná-lo ao grupo.
+  allowed_users: []
+  # Exemplo:
+  # allowed_users:
+  #   - "silvio"
+  #   - "usuario-servico-cliente"
+
+  access_group: "ai-bash-gen"
+
+  add_allowed_users_to_groups:
+    - "ai-bash-gen"
+
+  filesystem:
+    - path: "/etc/ai-bash-gen"
+      owner: "root"
+      group: "ai-bash-gen"
+      mode: "0750"
+
+    - path: "/var/lib/ai-bash-gen"
+      owner: "ai-bash-gen"
+      group: "ai-bash-gen"
+      mode: "0750"
+
+    - path: "/run/ai-bash-gen"
+      owner: "ai-bash-gen"
+      group: "ai-bash-gen"
+      mode: "0750"
+
+    - path: "/run/ai-bash-gen/routes"
+      owner: "ai-bash-gen"
+      group: "ai-bash-gen"
+      mode: "0750"
+
+  runtime_objects:
+    - path: "/run/ai-bash-gen/routes/*.sock"
+      owner: "ai-bash-gen"
+      group: "ai-bash-gen"
+      mode: "0660"
+
+# ---------------------------------------------------------------------------
+# SERVIÇO
+# ---------------------------------------------------------------------------
+services:
+  - name: "ai-bash-gen"
+    manager: "systemd"
+    unit_path: "/usr/lib/systemd/system/ai-bash-gen.service"
+    enabled: true
+    start_after_install: true
+
+    user: "ai-bash-gen"
+    group: "ai-bash-gen"
+
+    description: "AI Bash Generator"
+    exec_start: "/usr/bin/ai-bash-gen --config /etc/ai-bash-gen/config.yaml"
+
+    environment:
+      AI_BASH_GEN_RUNTIME_DIR: "/run/ai-bash-gen"
+      AI_BASH_GEN_LOG_LEVEL: "debug"
+      AI_BASH_GEN_LLAMA_LOG_VERBOSITY: "5"
+
+    restart:
+      policy: "on-failure"
+      seconds: 2
+
+    runtime:
+      directory: "ai-bash-gen"
+      mode: "0750"
+
+    state:
+      directory: "ai-bash-gen"
+      mode: "0750"
+
+    hardening:
+      NoNewPrivileges: true
+      PrivateTmp: true
+      PrivateDevices: true
+      ProtectSystem: "strict"
+      ProtectHome: true
+      ProtectKernelTunables: true
+      ProtectKernelModules: true
+      ProtectControlGroups: true
+      RestrictAddressFamilies:
+        - "AF_UNIX"
+      LockPersonality: true
+      MemoryDenyWriteExecute: false
+
+# ---------------------------------------------------------------------------
+# CICLO DE INSTALAÇÃO
+# ---------------------------------------------------------------------------
+# O package-debian.sh pode gerar os maintainer scripts a partir destas etapas.
+lifecycle:
+  pre_install: []
+
+  post_install:
+    - "create_system_accounts"
+    - "apply_directory_permissions"
+    - "authorize_allowed_users"
+    - "run_dependency_setup"
+    - "systemd_daemon_reload"
+    - "enable_services"
+    - "start_services"
+
+  pre_remove:
+    - "stop_services"
+
+  post_remove:
+    - "systemd_daemon_reload"
+
+  purge:
+    # Conta e dados persistentes não são apagados automaticamente.
+    remove_system_users: false
+    remove_system_groups: false
+    remove_state: false
