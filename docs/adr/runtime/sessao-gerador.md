@@ -6,38 +6,42 @@
 
 ## Contexto
 
-Cada turno pode acumular request normalizado, candidatos, definições de capabilities, resultados de tools e plano.
+O gerador deixou de compor o script completo. Sua responsabilidade é produzir uma FUNCTION para uma task que não possua capability compatível.
+
+Ainda assim, uma geração pode acumular contrato da task, restrições, resultados de tools e tentativas de correção.
 
 ## Problema
 
-Sem orçamento explícito, o contexto do modelo pode exceder o limite e perder instruções ou dados necessários.
+Sem orçamento explícito, uma sessão de geração de capability pode exceder o contexto disponível ou acumular resultados de tools desnecessários.
 
 ## Restrições
 
-- Hardware de referência é limitado.
-- Tool loop precisa de número máximo de turnos e resultados limitados.
+- hardware de referência é limitado;
+- o contexto deve ser restrito à task não resolvida;
+- tool loop precisa de número máximo de turnos e resultados limitados;
+- functions já resolvidas de outras tasks não devem ser reenviadas apenas para composição.
 
 ## Opções consideradas
 
-### Reenviar todo o histórico
+### Reenviar contexto completo da requisição
 
-Simples, mas cresce sem limite.
+Mantém informação ampla, porém desperdiça contexto com tasks já resolvidas e responsabilidades que pertencem ao assembler.
 
-### GeneratorSession controlada pelo Pipeline Manager
+### Sessão limitada à capability ausente
 
-Mantém cache, índice, token budget e estado de turno.
+Mantém task, contratos, restrições, tools autorizadas e issues de validação necessárias para produzir uma única FUNCTION.
 
 ## Decisão
 
-Em refinamento. Limites e estratégia de compactação ou rejeição ainda não foram definidos.
+Em refinamento. A sessão deve ser limitada à task não resolvida, mas limites numéricos, compactação e número máximo de turnos ainda não foram definidos.
 
 ## Justificativa
 
-A revisão propõe limites de contexto, reserva de saída, tamanho de tool result/source e número máximo de turnos.
+A nova responsabilidade do gerador permite reduzir significativamente o contexto sem perder informação necessária à solução da task.
 
 ## Consequências
 
-MOD-0003 e FLW-0001 permanecem bloqueados para refinamento final.
+MOD-0003 permanece bloqueado para refinamento final até que os limites sejam definidos.
 
 ## Dependências
 
@@ -45,6 +49,7 @@ MOD-0003 e FLW-0001 permanecem bloqueados para refinamento final.
 
 ## Critérios de validação
 
-- Definir limites configuráveis e defaults.
-- Definir estimativa de tokens.
-- Definir comportamento ao exceder orçamento.
+- definir limites configuráveis e defaults;
+- definir estimativa de tokens;
+- definir comportamento ao exceder orçamento;
+- impedir envio desnecessário do script completo ou de functions de tasks já resolvidas.
