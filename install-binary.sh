@@ -24,10 +24,12 @@ LLAMA_CPP_VERSION="v0.5.0"
 LLAMA_CPP_COMMIT="7fe450e19305b828c199d602c23a8337aaa1f03b"
 
 DEFAULT_MODEL_KEY="qwen35-08b-q4"
+DEFAULT_NORMALIZER_MODEL_KEY="qwen35-08b-q4"
+DEFAULT_GENERATOR_MODEL_KEY="qwen25-coder-15b-q4"
 FORCE_MODE=0
 BIN_ARG=""
 
-REQUIRED_DEBIAN_PACKAGES=(bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils findutils)
+REQUIRED_DEBIAN_PACKAGES=(bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils findutils postgresql postgresql-client)
 LLAMA_CPP_BUILD_PACKAGES=(git cmake build-essential ca-certificates)
 MODEL_DOWNLOAD_PACKAGES=(curl ca-certificates)
 
@@ -329,10 +331,13 @@ print_model_catalog() {
 
 download_selected_model() {
   local state_dir="$1"
+  local target_name="${2:-model.gguf}"
   local model_dir="$state_dir/models"
-  local target="$model_dir/model.gguf"
-  local partial="$model_dir/.model.gguf.part"
+  local target="$model_dir/$target_name"
+  local partial="$model_dir/.${target_name}.part"
   local actual_sha
+  local info_name="${target_name}.info"
+  [[ "$target_name" == "model.gguf" ]] && info_name="model.info"
 
   ensure_debian_package_list "download de modelos GGUF" "${MODEL_DOWNLOAD_PACKAGES[@]}"
   command -v curl >/dev/null 2>&1 || die "curl não encontrado após instalação das dependências de download."
@@ -365,8 +370,8 @@ download_selected_model() {
     printf 'label=%s\n' "$MODEL_LABEL"
     printf 'source=%s\n' "$MODEL_URL"
     printf 'sha256=%s\n' "$MODEL_SHA256"
-  } | "${SUDO[@]}" tee "$model_dir/model.info" >/dev/null
-  "${SUDO[@]}" chmod 0644 "$model_dir/model.info"
+  } | "${SUDO[@]}" tee "$model_dir/$info_name" >/dev/null
+  "${SUDO[@]}" chmod 0644 "$model_dir/$info_name"
 
   MODEL_SOURCE="$target"
   MODEL_INSTALLATION_MODE="downloaded"
@@ -375,26 +380,49 @@ download_selected_model() {
 
 select_or_download_model() {
   local state_dir="$1"
-  local detected choice key
+  local default_key="${2:-$DEFAULT_MODEL_KEY}"
+  local target_name="${3:-model.gguf}"
+  local role_label="${4:-agente}"
+  local target="$state_dir/models/$target_name"
+  local detected choice key default_choice="1"
 
-  detected="$(detect_model_default)"
+  if [[ "${FORCE_MODE:-0}" == "1" ]]; then
+    if validate_model_source "$target" >/dev/null 2>&1; then
+      MODEL_SOURCE="$target"
+      MODEL_INSTALLATION_MODE="existing"
+      info "$role_label: modelo existente reutilizado: $target"
+      return 0
+    fi
+    model_catalog_resolve "$default_key" || die "modelo padrão inválido para $role_label: $default_key"
+    download_selected_model "$state_dir" "$target_name"
+    return 0
+  fi
+
+  detected="$target"
+  if [[ "$target_name" == "model.gguf" ]]; then
+    detected="$(detect_model_default)"
+  fi
+  if validate_model_source "$target" >/dev/null 2>&1; then
+    detected="$target"
+  fi
   if validate_model_source "$detected" >/dev/null 2>&1; then
-    if ask_yes_no "Modelo GGUF local encontrado em $detected. Usar este modelo?" "Y"; then
+    if ask_yes_no "$role_label: modelo GGUF local encontrado em $detected. Usar este modelo?" "Y"; then
       MODEL_SOURCE="$detected"
       MODEL_INSTALLATION_MODE="existing"
       return 0
     fi
   fi
 
-  if [[ "${FORCE_MODE:-0}" == "1" ]]; then
-    model_catalog_resolve "$DEFAULT_MODEL_KEY" || die "modelo padrão inválido: $DEFAULT_MODEL_KEY"
-    download_selected_model "$state_dir"
-    return 0
-  fi
+  case "$default_key" in
+    qwen35-08b-q4) default_choice="1" ;;
+    qwen35-08b-q8) default_choice="2" ;;
+    qwen25-coder-15b-q4) default_choice="3" ;;
+    qwen35-4b-q4) default_choice="4" ;;
+  esac
 
   while true; do
     print_model_catalog
-    choice="$(ask_value 'Selecione o modelo' '1')"
+    choice="$(ask_value "$role_label: selecione o modelo" "$default_choice")"
     case "$choice" in
       1) key="qwen35-08b-q4" ;;
       2) key="qwen35-08b-q8" ;;
@@ -409,14 +437,13 @@ select_or_download_model() {
     esac
 
     model_catalog_resolve "$key" || die "entrada inválida no catálogo de modelos: $key"
-    printf '\nSelecionado: %s (%s)\n%s\n' "$MODEL_LABEL" "$MODEL_SIZE" "$MODEL_NOTE"
+    printf '\nSelecionado para %s: %s (%s)\n%s\n' "$role_label" "$MODEL_LABEL" "$MODEL_SIZE" "$MODEL_NOTE"
     if ask_yes_no "Baixar este modelo agora?" "Y"; then
-      download_selected_model "$state_dir"
+      download_selected_model "$state_dir" "$target_name"
       return 0
     fi
   done
 }
-
 confirm_value() {
   local label="$1"
   local value="$2"
@@ -982,7 +1009,7 @@ prepare_directories() {
 
 
 create_bootstrap_config() {
-  local config_dir="$1" group="$2" llama_binary="$3" model_file="$4"
+  local config_dir="$1" group="$2" llama_binary="$3" normalizer_model="$4" generator_model="$5" service_user="$6"
   local config_file temp_config
   config_file="$config_dir/config.yaml"
 
@@ -996,12 +1023,32 @@ create_bootstrap_config() {
 # ai-bash-gen - configuração bootstrap
 llama:
   binary: "$llama_binary"
-  model: "$model_file"
+  model: "$generator_model"
   context_size: $DEFAULT_CONTEXT_SIZE
   startup_timeout: $DEFAULT_STARTUP_TIMEOUT
   request_timeout: $DEFAULT_REQUEST_TIMEOUT
   max_tokens: $DEFAULT_MAX_TOKENS
   temperature: $DEFAULT_TEMPERATURE
+
+# Agentes LLM independentes. O instalador usa por padrão um modelo leve para
+# normalização e um modelo especializado em código para a geração.
+normalizer:
+  model: "$normalizer_model"
+  max_tokens: 1200
+  temperature: 0.1
+
+generator:
+  model: "$generator_model"
+  max_tokens: $DEFAULT_MAX_TOKENS
+  temperature: $DEFAULT_TEMPERATURE
+
+database:
+  enabled: true
+  host: "/var/run/postgresql"
+  port: 5432
+  name: "ai-bash-gen"
+  user: "$service_user"
+  search_limit: 8
 __CONFIG__
 
   "${SUDO[@]}" install -o root -g "$group" -m 0640 "$temp_config" "$config_file"
@@ -1061,6 +1108,101 @@ migrate_managed_runtime_defaults() {
 
   ok "configuração atualizada para context_size=$DEFAULT_CONTEXT_SIZE, request_timeout=$DEFAULT_REQUEST_TIMEOUT, max_tokens=$DEFAULT_MAX_TOKENS"
   info "backup da configuração: $backup"
+}
+
+
+run_as_postgres() {
+  if [[ "$EUID" -eq 0 ]]; then
+    runuser -u postgres -- "$@"
+  else
+    sudo -u postgres -- "$@"
+  fi
+}
+
+setup_postgresql_catalog() {
+  local service_user="$1"
+  local database_name="ai-bash-gen"
+
+  command -v psql >/dev/null 2>&1 || die "psql não encontrado após instalação das dependências."
+  command -v createuser >/dev/null 2>&1 || die "createuser não encontrado após instalação do PostgreSQL."
+  command -v createdb >/dev/null 2>&1 || die "createdb não encontrado após instalação do PostgreSQL."
+
+  if command -v systemctl >/dev/null 2>&1; then
+    "${SUDO[@]}" systemctl enable --now postgresql >/dev/null 2>&1 || die "não foi possível iniciar/habilitar PostgreSQL."
+  fi
+
+  if ! run_as_postgres psql -AtX -d postgres -v ON_ERROR_STOP=1 -v role="$service_user" \
+      -c "SELECT 1 FROM pg_roles WHERE rolname = :'role';" | grep -Fxq 1; then
+    info "criando role PostgreSQL: $service_user"
+    run_as_postgres createuser --no-createdb --no-createrole --no-superuser "$service_user"
+  else
+    info "role PostgreSQL já existe e será reutilizada: $service_user"
+  fi
+
+  if ! run_as_postgres psql -AtX -d postgres -v ON_ERROR_STOP=1 -v db="$database_name" \
+      -c "SELECT 1 FROM pg_database WHERE datname = :'db';" | grep -Fxq 1; then
+    info "criando banco PostgreSQL: $database_name"
+    run_as_postgres createdb --owner="$service_user" "$database_name"
+  else
+    info "banco PostgreSQL já existe e será reutilizado: $database_name"
+  fi
+
+  info "aplicando schema idempotente do Capability Catalog..."
+  run_as_postgres psql -X -v ON_ERROR_STOP=1 -v role="$service_user" -d "$database_name" <<'__AI_BASH_GEN_SQL__'
+SET ROLE :"role";
+
+CREATE SCHEMA IF NOT EXISTS capability_catalog;
+
+CREATE TABLE IF NOT EXISTS capability_catalog.capability (
+    id                  text PRIMARY KEY,
+    version             integer NOT NULL DEFAULT 1,
+    capability_type     text NOT NULL DEFAULT 'function',
+    description         text NOT NULL,
+    match_instruction   text NOT NULL,
+    input_description   text NOT NULL DEFAULT '',
+    output_description  text NOT NULL DEFAULT '',
+    implementation      text NOT NULL DEFAULT '',
+    dependencies        text NOT NULL DEFAULT '',
+    platform            text NOT NULL DEFAULT 'debian-linux',
+    risk_level          integer NOT NULL DEFAULT 0,
+    checksum            text NOT NULL DEFAULT '',
+    enabled             boolean NOT NULL DEFAULT true,
+    created_at          timestamptz NOT NULL DEFAULT now(),
+    updated_at          timestamptz NOT NULL DEFAULT now(),
+    search_vector tsvector GENERATED ALWAYS AS (
+        to_tsvector(
+            'simple',
+            coalesce(id, '') || ' ' ||
+            coalesce(description, '') || ' ' ||
+            coalesce(match_instruction, '') || ' ' ||
+            coalesce(input_description, '') || ' ' ||
+            coalesce(output_description, '')
+        )
+    ) STORED
+);
+
+CREATE INDEX IF NOT EXISTS capability_search_vector_idx
+    ON capability_catalog.capability USING GIN (search_vector);
+
+CREATE TABLE IF NOT EXISTS capability_catalog.capability_usage (
+    id              bigserial PRIMARY KEY,
+    capability_id   text NOT NULL REFERENCES capability_catalog.capability(id),
+    request_id      text NOT NULL,
+    used_at         timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (capability_id, request_id)
+);
+
+RESET ROLE;
+__AI_BASH_GEN_SQL__
+
+  if [[ "$CREATE_SERVICE_ACCOUNT" == "yes" ]]; then
+    if ! "${SUDO[@]}" runuser -u "$service_user" -- psql -X -At -h /var/run/postgresql -d "$database_name" \
+        -c 'SELECT current_database();' | grep -Fxq "$database_name"; then
+      die "o usuário de serviço não conseguiu conectar ao PostgreSQL via peer auth."
+    fi
+  fi
+
+  ok "PostgreSQL/Capability Catalog configurado: database=$database_name role=$service_user"
 }
 
 install_runtime_assets() {
@@ -1314,9 +1456,12 @@ llama.cpp versão   : $LLAMA_CPP_VERSION
 llama-server modo  : ${LLAMA_INSTALLATION_MODE:-unknown}
 llama-server origem: $LLAMA_SOURCE
 llama-server alvo  : $LLAMA_TARGET
-Modelo GGUF modo   : ${MODEL_INSTALLATION_MODE:-unknown}
-Modelo GGUF origem : $MODEL_SOURCE
-Modelo GGUF alvo   : $MODEL_TARGET
+Normalizer modo    : ${NORMALIZER_MODEL_MODE:-unknown}
+Normalizer origem  : ${NORMALIZER_MODEL_SOURCE:-não definido}
+Normalizer alvo    : ${NORMALIZER_MODEL_TARGET:-não definido}
+Generator modo     : ${GENERATOR_MODEL_MODE:-unknown}
+Generator origem   : ${GENERATOR_MODEL_SOURCE:-não definido}
+Generator alvo     : ${GENERATOR_MODEL_TARGET:-não definido}
 Usuário de serviço : $SERVICE_USER
 Grupo de serviço   : $SERVICE_GROUP
 Usuário cliente    : ${CLIENT_USER:-nenhum}
@@ -1409,12 +1554,19 @@ main() {
   LLAMA_TARGET="$(ask_absolute_path 'Destino controlado do llama-server' "$DEFAULT_LLAMA_TARGET" 'Destino do llama-server')"
   confirm_value "Destino do llama-server" "$LLAMA_TARGET"
 
-  select_or_download_model "$STATE_DIR"
-  MODEL_SOURCE="$(absolute_path "$MODEL_SOURCE")"
-  confirm_value "Modelo GGUF selecionado" "$MODEL_SOURCE"
+  select_or_download_model "$STATE_DIR" "$DEFAULT_NORMALIZER_MODEL_KEY" "request-normalizer.gguf" "request-normalizer"
+  NORMALIZER_MODEL_SOURCE="$(absolute_path "$MODEL_SOURCE")"
+  NORMALIZER_MODEL_MODE="$MODEL_INSTALLATION_MODE"
+  confirm_value "Modelo do request-normalizer" "$NORMALIZER_MODEL_SOURCE"
+  NORMALIZER_MODEL_TARGET="$STATE_DIR/models/request-normalizer.gguf"
+  confirm_value "Destino do modelo request-normalizer" "$NORMALIZER_MODEL_TARGET"
 
-  MODEL_TARGET="$STATE_DIR/models/$(basename -- "$MODEL_SOURCE")"
-  confirm_value "Destino controlado do modelo GGUF" "$MODEL_TARGET"
+  select_or_download_model "$STATE_DIR" "$DEFAULT_GENERATOR_MODEL_KEY" "bash-generator.gguf" "bash-generator"
+  GENERATOR_MODEL_SOURCE="$(absolute_path "$MODEL_SOURCE")"
+  GENERATOR_MODEL_MODE="$MODEL_INSTALLATION_MODE"
+  confirm_value "Modelo do bash-generator" "$GENERATOR_MODEL_SOURCE"
+  GENERATOR_MODEL_TARGET="$STATE_DIR/models/bash-generator.gguf"
+  confirm_value "Destino do modelo bash-generator" "$GENERATOR_MODEL_TARGET"
 
   SERVICE_USER="$(ask_value 'Usuário de serviço' "$DEFAULT_SERVICE_USER")"
   confirm_value "Usuário de serviço" "$SERVICE_USER"
@@ -1510,6 +1662,8 @@ main() {
     authorize_client_user "$CLIENT_USER" "$SERVICE_GROUP"
   fi
 
+  setup_postgresql_catalog "$SERVICE_USER"
+
   install_binary "$BIN_SOURCE" "$BIN_TARGET"
   [[ -x "$BIN_TARGET" ]] || die "binário instalado não é executável: $BIN_TARGET"
   INSTALLED_VERSION="$("$BIN_TARGET" --version 2>&1)" || die "binário instalado falhou em --version: $BIN_TARGET"
@@ -1517,7 +1671,9 @@ main() {
   ok "binário instalado validado: $INSTALLED_VERSION"
   prepare_directories "$CONFIG_DIR" "$STATE_DIR" "$RUNTIME_DIR" "$SERVICE_USER" "$SERVICE_GROUP" "$CREATE_SERVICE_ACCOUNT"
 
-  install_runtime_assets "$LLAMA_SOURCE" "$LLAMA_TARGET" "$MODEL_SOURCE" "$MODEL_TARGET" \
+  install_runtime_assets "$LLAMA_SOURCE" "$LLAMA_TARGET" "$NORMALIZER_MODEL_SOURCE" "$NORMALIZER_MODEL_TARGET" \
+    "$SERVICE_USER" "$SERVICE_GROUP" "$CREATE_SERVICE_ACCOUNT"
+  install_runtime_assets "$LLAMA_SOURCE" "$LLAMA_TARGET" "$GENERATOR_MODEL_SOURCE" "$GENERATOR_MODEL_TARGET" \
     "$SERVICE_USER" "$SERVICE_GROUP" "$CREATE_SERVICE_ACCOUNT"
 
   if [[ "$INSTALL_SYSTEMD" == "yes" ]]; then
@@ -1527,7 +1683,7 @@ main() {
       CREATE_BOOTSTRAP_CONFIG="yes"
     fi
     if [[ "$CREATE_BOOTSTRAP_CONFIG" == "yes" ]]; then
-      create_bootstrap_config "$CONFIG_DIR" "$SERVICE_GROUP" "$LLAMA_TARGET" "$MODEL_TARGET"
+      create_bootstrap_config "$CONFIG_DIR" "$SERVICE_GROUP" "$LLAMA_TARGET" "$NORMALIZER_MODEL_TARGET" "$GENERATOR_MODEL_TARGET" "$SERVICE_USER"
     else
       migrate_managed_runtime_defaults "$CONFIG_DIR/config.yaml"
     fi

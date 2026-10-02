@@ -34,7 +34,7 @@ resolve_component() {
 
 check_required_components() {
   local name path
-  local -a required=(bash grep awk find sha256sum install getent groupadd useradd usermod runuser nologin systemctl)
+  local -a required=(bash grep awk find sha256sum install getent groupadd useradd usermod runuser nologin systemctl psql)
   echo
   echo "---------------- Dependências/componentes ----------------"
   for name in "${required[@]}"; do
@@ -47,7 +47,7 @@ check_required_components() {
 
   if command -v dpkg-query >/dev/null 2>&1; then
     local package status
-    local -a packages=(bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils findutils)
+    local -a packages=(bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils findutils postgresql-client)
     for package in "${packages[@]}"; do
       status="$(dpkg-query -W -f='${Status}' "$package" 2>/dev/null || true)"
       if [[ "$status" == "install ok installed" ]]; then
@@ -195,7 +195,9 @@ else
       'state_dir=/var/lib/ai-bash-gen' \
       'runtime_dir=/run/ai-bash-gen' \
       'routes_dir=/run/ai-bash-gen/routes' \
-      'llama_socket=/run/ai-bash-gen/internal/llama.sock' \
+      'llama_socket=/run/ai-bash-gen/internal/bash-generator.sock' \
+      'normalizer_socket=/run/ai-bash-gen/internal/request-normalizer.sock' \
+      'generator_socket=/run/ai-bash-gen/internal/bash-generator.sock' \
       'generate_socket=/run/ai-bash-gen/routes/generate.sock'
     do
       if ! grep -Fxq "$expected" <<<"$RUN_STDOUT"; then

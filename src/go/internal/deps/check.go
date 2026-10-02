@@ -32,8 +32,18 @@ func Validate(cfg config.Config) error {
 		problems = append(problems, err.Error())
 	}
 
-	if err := validateModel(cfg.Llama.Model); err != nil {
-		problems = append(problems, fmt.Sprintf("modelo GGUF inválido: %v", err))
+	if err := validateModel(cfg.Normalizer.Model); err != nil {
+		problems = append(problems, fmt.Sprintf("modelo GGUF do request-normalizer inválido: %v", err))
+	}
+	if err := validateModel(cfg.Generator.Model); err != nil {
+		problems = append(problems, fmt.Sprintf("modelo GGUF do bash-generator inválido: %v", err))
+	}
+	if cfg.Database.Enabled {
+		if psql, err := exec.LookPath("psql"); err != nil {
+			problems = append(problems, "psql não encontrado no PATH")
+		} else if err := probeExecutable(psql, "--version"); err != nil {
+			problems = append(problems, fmt.Sprintf("psql indisponível: %v", err))
+		}
 	}
 
 	if len(problems) != 0 {

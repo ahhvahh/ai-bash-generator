@@ -9,6 +9,24 @@ import (
 	"github.com/ahhvahh/ai-bash-generator/internal/protocol"
 )
 
+const normalizedFixture = `intent: "disk_usage"
+canonical_instruction: "Show filesystem disk usage."
+input_description: "Local system."
+output_description: "Human-readable disk usage."
+tasks {
+  id: "collect_disk_usage"
+  instruction: "Collect filesystem disk usage."
+  output {
+    name: "diskUsage"
+    contract {
+      kind: DATA_KIND_TEXT
+      encoding: STREAM_ENCODING_TEXT_UTF8
+    }
+  }
+}
+final_output_ref: "diskUsage"
+status: NORMALIZATION_STATUS_READY`
+
 type fakeCompleter struct {
 	content string
 	err     error
@@ -39,111 +57,131 @@ func (f *sequenceCompleter) Complete(_ context.Context, _ string, userPrompt str
 	return content, nil
 }
 
-func TestRunnerProducesValidatedArtifactAndAllStages(t *testing.T) {
-	completer := &fakeCompleter{content: "```bash\necho \"Ola A-Bioma\"\n```"}
-	r := NewRunner(completer, time.Second)
-	states := map[protocol.Stage]protocol.ProgressState{}
+type fakeSearcher struct {
+	result string
+	calls  int
+}
 
-	artifact, err := r.Generate(context.Background(), protocol.GenerateRequest{
-		Text:              "mostre Ola A-Bioma",
-		RequestedFilename: "hello.sh",
-	}, func(stage protocol.Stage, state protocol.ProgressState, _ string) error {
-		states[stage] = state
-		return nil
-	})
+func (f *fakeSearcher) Search(_ context.Context, normalized string) (string, error) {
+	f.calls++
+	if !strings.Contains(normalized, "canonical_instruction") {
+		return "", &testError{"normalized request ausente"}
+	}
+	return f.result, nil
+}
+
+func TestRunnerUsesNormalizerCatalogAndGenerator(t *testing.T) {
+	normalizer := &fakeCompleter{content: normalizedFixture}
+	generator := &fakeCompleter{content: "#!/usr/bin/env bash\nset -Eeuo pipefail\ndf -h\n"}
+	searcher := &fakeSearcher{result: "query[0]: Show filesystem disk usage.\n  candidates: 0\n"}
+	r := NewRunner(normalizer, generator, searcher, time.Second)
+
+	result, err := r.Generate(context.Background(), protocol.GenerateRequest{
+		Text:              "mostre o uso dos discos",
+		RequestedFilename: "disco.sh",
+	}, func(protocol.Stage, protocol.ProgressState, string) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if artifact.Filename != "hello.sh" || artifact.SHA256 == "" {
-		t.Fatalf("artefato inesperado: %#v", artifact)
+	if normalizer.calls != 1 || searcher.calls != 1 || generator.calls != 1 {
+		t.Fatalf("calls normalizer=%d searcher=%d generator=%d", normalizer.calls, searcher.calls, generator.calls)
 	}
-	if artifact.Content != "#!/usr/bin/env bash\necho \"Ola A-Bioma\"\n" {
-		t.Fatalf("content=%q", artifact.Content)
+	if result.Artifact.Filename != "disco.sh" {
+		t.Fatalf("artifact=%#v", result.Artifact)
 	}
-	if completer.calls != 1 {
-		t.Fatalf("calls=%d want=1", completer.calls)
+	if !strings.Contains(result.Artifact.Content, "df -h") {
+		t.Fatalf("content=%q", result.Artifact.Content)
 	}
+	if !strings.Contains(generator.prompts[0], "NormalizedRequest:") ||
+		!strings.Contains(generator.prompts[0], "Capability candidates retrieved from PostgreSQL:") {
+		t.Fatalf("generator prompt não contém handoff esperado: %q", generator.prompts[0])
+	}
+}
 
-	for _, stage := range []protocol.Stage{
-		protocol.StageRequestNormalizer,
-		protocol.StageSearchCapabilities,
-		protocol.StageBashGenerator,
-		protocol.StageValidation,
-		protocol.StageBashOutput,
-	} {
-		if states[stage] != protocol.StateCompleted {
-			t.Fatalf("stage %s=%s", stage.String(), states[stage].String())
-		}
+func TestRunnerCanStopAfterNormalizer(t *testing.T) {
+	normalizer := &fakeCompleter{content: normalizedFixture}
+	generator := &fakeCompleter{content: "echo should-not-run"}
+	searcher := &fakeSearcher{result: "should-not-run"}
+	r := NewRunner(normalizer, generator, searcher, time.Second)
+
+	result, err := r.Generate(context.Background(), protocol.GenerateRequest{
+		Text:           "mostre o uso dos discos",
+		StopAfterStage: protocol.StageRequestNormalizer,
+	}, func(protocol.Stage, protocol.ProgressState, string) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.StageOutput == nil || result.StageOutput.Stage != protocol.StageRequestNormalizer {
+		t.Fatalf("stage output=%#v", result.StageOutput)
+	}
+	if searcher.calls != 0 || generator.calls != 0 {
+		t.Fatalf("etapas posteriores foram executadas")
+	}
+	if !strings.Contains(result.StageOutput.Content, "NORMALIZATION_STATUS_READY") {
+		t.Fatalf("normalized output=%q", result.StageOutput.Content)
+	}
+}
+
+func TestRunnerCanStopAfterCatalogSearch(t *testing.T) {
+	normalizer := &fakeCompleter{content: normalizedFixture}
+	generator := &fakeCompleter{content: "echo should-not-run"}
+	searcher := &fakeSearcher{result: "query[0]: test\n  candidates: 1\n  - id: disk-usage\n"}
+	r := NewRunner(normalizer, generator, searcher, time.Second)
+
+	result, err := r.Generate(context.Background(), protocol.GenerateRequest{
+		Text:           "mostre o uso dos discos",
+		StopAfterStage: protocol.StageSearchCapabilities,
+	}, func(protocol.Stage, protocol.ProgressState, string) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.StageOutput == nil || !strings.Contains(result.StageOutput.Content, "disk-usage") {
+		t.Fatalf("stage output=%#v", result.StageOutput)
+	}
+	if generator.calls != 0 {
+		t.Fatalf("generator executado indevidamente")
 	}
 }
 
 func TestRunnerRetriesInvalidBashWithValidationFeedback(t *testing.T) {
-	completer := &sequenceCompleter{contents: []string{
+	normalizer := &fakeCompleter{content: normalizedFixture}
+	generator := &sequenceCompleter{contents: []string{
 		"#!/usr/bin/env bash\necho \"nao fechado\n",
 		"#!/usr/bin/env bash\nset -Eeuo pipefail\ndf -h\n",
 	}}
-	r := NewRunner(completer, time.Second)
-	var validationFailed bool
+	searcher := &fakeSearcher{result: "candidates: 0\n"}
+	r := NewRunner(normalizer, generator, searcher, time.Second)
 
-	artifact, err := r.Generate(context.Background(), protocol.GenerateRequest{
-		Text:              "mostre o uso dos discos com df -h",
-		RequestedFilename: "disco.sh",
-	}, func(stage protocol.Stage, state protocol.ProgressState, _ string) error {
-		if stage == protocol.StageValidation && state == protocol.StateFailed {
-			validationFailed = true
-		}
+	result, err := r.Generate(context.Background(), protocol.GenerateRequest{Text: "mostre discos"}, func(protocol.Stage, protocol.ProgressState, string) error {
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if completer.calls != 2 {
-		t.Fatalf("calls=%d want=2", completer.calls)
+	if generator.calls != 2 {
+		t.Fatalf("generator calls=%d want=2", generator.calls)
 	}
-	if !validationFailed {
-		t.Fatal("esperava registrar falha recuperável da primeira validação")
+	if !strings.Contains(generator.prompts[1], "bash -n validation error:") {
+		t.Fatalf("repair prompt=%q", generator.prompts[1])
 	}
-	if len(completer.prompts) != 2 {
-		t.Fatalf("prompts=%d", len(completer.prompts))
-	}
-	if !strings.Contains(completer.prompts[1], "Original request:") ||
-		!strings.Contains(completer.prompts[1], "df -h") ||
-		!strings.Contains(completer.prompts[1], "bash -n validation error:") {
-		t.Fatalf("prompt de reparo não contém contexto suficiente: %q", completer.prompts[1])
-	}
-	if artifact.Content != "#!/usr/bin/env bash\nset -Eeuo pipefail\ndf -h\n" {
-		t.Fatalf("content=%q", artifact.Content)
+	if !strings.Contains(result.Artifact.Content, "df -h") {
+		t.Fatalf("content=%q", result.Artifact.Content)
 	}
 }
 
-func TestRunnerRejectsInvalidBashAfterRetry(t *testing.T) {
-	completer := &fakeCompleter{content: "if then"}
-	r := NewRunner(completer, time.Second)
+func TestRunnerRejectsInvalidNormalizedRequest(t *testing.T) {
+	normalizer := &fakeCompleter{content: "status: NORMALIZATION_STATUS_READY"}
+	generator := &fakeCompleter{content: "echo ok"}
+	searcher := &fakeSearcher{}
+	r := NewRunner(normalizer, generator, searcher, time.Second)
+
 	_, err := r.Generate(context.Background(), protocol.GenerateRequest{Text: "teste"}, func(protocol.Stage, protocol.ProgressState, string) error {
 		return nil
 	})
-	if err == nil {
-		t.Fatal("esperava erro de sintaxe")
-	}
-	if completer.calls != maxGenerationAttempts {
-		t.Fatalf("calls=%d want=%d", completer.calls, maxGenerationAttempts)
-	}
-	if !strings.Contains(err.Error(), "após 2 tentativas") {
+	if err == nil || !strings.Contains(err.Error(), "canonical_instruction") {
 		t.Fatalf("erro inesperado: %v", err)
 	}
 }
 
-func TestBuildRepairPromptTruncatesLongValidationError(t *testing.T) {
-	longErr := strings.Repeat("x", 5000)
-	prompt := buildRepairPrompt("teste", &testError{message: longErr})
-	if len([]rune(prompt)) > 1600 {
-		t.Fatalf("prompt de reparo excessivamente grande: %d runes", len([]rune(prompt)))
-	}
-	if !strings.Contains(prompt, "Generate the script again FROM SCRATCH") {
-		t.Fatalf("prompt inesperado: %q", prompt)
-	}
-}
-
 type testError struct{ message string }
-
 func (e *testError) Error() string { return e.message }

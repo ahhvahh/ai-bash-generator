@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ahhvahh/ai-bash-generator/internal/buildinfo"
+	"github.com/ahhvahh/ai-bash-generator/internal/catalog"
 	"github.com/ahhvahh/ai-bash-generator/internal/config"
 	"github.com/ahhvahh/ai-bash-generator/internal/deps"
 	"github.com/ahhvahh/ai-bash-generator/internal/llama"
@@ -67,6 +68,8 @@ func run(args []string) int {
 		fmt.Printf("runtime_dir=%s\n", p.RuntimeDir)
 		fmt.Printf("routes_dir=%s\n", p.RoutesDir)
 		fmt.Printf("llama_socket=%s\n", p.LlamaSocket)
+		fmt.Printf("normalizer_socket=%s\n", p.NormalizerSocket)
+		fmt.Printf("generator_socket=%s\n", p.GeneratorSocket)
 		fmt.Printf("generate_socket=%s\n", p.GenerateSocket)
 		return 0
 	case *checkDependencies && *configPath == "":
@@ -101,7 +104,10 @@ func runDependencyCheck(configPath string) int {
 	}
 	fmt.Println("dependências: OK")
 	fmt.Printf("llama_binary=%s\n", cfg.Llama.Binary)
-	fmt.Printf("llama_model=%s\n", cfg.Llama.Model)
+	fmt.Printf("normalizer_model=%s\n", cfg.Normalizer.Model)
+	fmt.Printf("generator_model=%s\n", cfg.Generator.Model)
+	fmt.Printf("database_enabled=%t\n", cfg.Database.Enabled)
+	fmt.Printf("database=%s\n", cfg.Database.Name)
 	return 0
 }
 
@@ -118,18 +124,30 @@ func runDaemon(configPath string) int {
 	requestTimeout, _ := cfg.RequestTimeout()
 	paths := platform.DefaultPaths()
 
-	llamaProcess := llama.NewProcess(cfg.Llama, paths.LlamaSocket)
-	if err := llamaProcess.Start(context.Background(), startupTimeout); err != nil {
-		slog.Error("falha ao iniciar dependência llama-server; rota pública não será criada", "error", err)
+	normalizerProcess := llama.NewProcess(cfg.NormalizerLlama(), paths.NormalizerSocket)
+	if err := normalizerProcess.Start(context.Background(), startupTimeout); err != nil {
+		slog.Error("falha ao iniciar request-normalizer; rota pública não será criada", "error", err)
 		return 1
 	}
 	defer func() {
-		if err := llamaProcess.Close(); err != nil {
-			slog.Warn("falha ao encerrar llama-server", "error", err)
+		if err := normalizerProcess.Close(); err != nil {
+			slog.Warn("falha ao encerrar request-normalizer", "error", err)
 		}
 	}()
 
-	generationPipeline := pipeline.NewRunner(llamaProcess.Client(), requestTimeout)
+	generatorProcess := llama.NewProcess(cfg.GeneratorLlama(), paths.GeneratorSocket)
+	if err := generatorProcess.Start(context.Background(), startupTimeout); err != nil {
+		slog.Error("falha ao iniciar bash-generator; rota pública não será criada", "error", err)
+		return 1
+	}
+	defer func() {
+		if err := generatorProcess.Close(); err != nil {
+			slog.Warn("falha ao encerrar bash-generator", "error", err)
+		}
+	}()
+
+	capabilityCatalog := catalog.New(cfg.Database)
+	generationPipeline := pipeline.NewRunner(normalizerProcess.Client(), generatorProcess.Client(), capabilityCatalog, requestTimeout)
 	generationService := service.New(paths.GenerateSocket, generationPipeline)
 	if err := generationService.Start(); err != nil {
 		slog.Error("falha ao iniciar serviço de geração", "socket", paths.GenerateSocket, "error", err)
@@ -143,13 +161,16 @@ func runDaemon(configPath string) int {
 		"config", configPath,
 		"pid", os.Getpid(),
 		"llama_binary", cfg.Llama.Binary,
-		"llama_model", cfg.Llama.Model,
+		"normalizer_model", cfg.Normalizer.Model,
+		"generator_model", cfg.Generator.Model,
+		"database", cfg.Database.Name,
 	)
 	slog.Info("caminhos do serviço",
 		"state_dir", paths.StateDir,
 		"runtime_dir", paths.RuntimeDir,
 		"routes_dir", paths.RoutesDir,
-		"llama_socket", paths.LlamaSocket,
+		"normalizer_socket", paths.NormalizerSocket,
+		"generator_socket", paths.GeneratorSocket,
 		"generate_socket", paths.GenerateSocket,
 	)
 
