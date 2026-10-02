@@ -1,8 +1,7 @@
 # Prompt canônico do Request Normalizer
 
 **ID:** PRM-0001  
-**Status:** refinement  
-**Referência de runtime analisada:** `main@a734af859d800487b51b5136d5772397dc12ffc6`
+**Status:** refinement
 
 ## Dependências
 
@@ -13,95 +12,59 @@
 
 ## Objetivo
 
-Converter uma solicitação escrita em linguagem humana em uma `NormalizedRequest` estruturada, sem escolher comandos, programas, capabilities, pacotes, bancos de dados ou tools.
+Converter uma solicitação humana em uma `NormalizedRequest` composta por tasks independentes de implementação.
 
-A saída do normalizador continua sendo **Protobuf Text Format (TextProto)**. JSON não substitui o envelope TextProto. Entretanto, enquanto `input_description` e `output_description` forem campos `string` do contrato atual, seus conteúdos devem ser objetos JSON válidos e compactos, para que a definição lógica de entrada e saída seja determinística e processável.
+A fronteira com o LLM continua usando TextProto. O normalizador descreve contratos lógicos; não escolhe JSON, stdin/stdout, comandos, applications, scripts, services ou capabilities.
 
-## Semântica das tasks
+## Semântica obrigatória de cada task
 
-A ordem em que as mensagens `tasks { ... }` aparecem é a sequência canônica de processamento. A primeira task representa a primeira transformação lógica; as seguintes aparecem na ordem em que podem ser avaliadas.
+Cada task deve conter conceitualmente:
 
-Uma task pode produzir uma saída que:
+1. **input** — campos estruturados disponíveis, preservando valores literais e referências a resultados anteriores;
+2. **instruction** — descrição objetiva do processamento necessário;
+3. **output contract** — estrutura tipada esperada do resultado.
 
-- não é consumida por nenhuma outra task e existe apenas como resultado solicitado pelo usuário;
-- é consumida por uma única task posterior;
-- é consumida por várias tasks posteriores.
+A representação física atual pode utilizar os campos existentes do Protobuf durante a transição. Quando contratos ainda estiverem transportados em strings, seu conteúdo deve continuar sendo JSON válido e determinístico, mas isso é compatibilidade de wire format, não escolha de encoding de execução.
 
-`result_ref` deve existir somente quando houver dependência real de dados. Não se deve criar encadeamento artificial entre tasks independentes. `depends_on` deve ser usado somente para dependência de controle sem transporte de dados.
+## DAG
 
-Quando a solicitação possuir vários resultados finais visíveis ao usuário, o normalizador deve criar uma task final de agregação, independente de implementação, cujo output represente o resultado final como objeto JSON. `final_output_ref` referencia esse output.
+`result_ref` existe apenas para dependência real de dados.
 
-## Prompt canônico
+`depends_on` existe apenas para dependência de controle sem transporte de dados.
 
-```text
-You are the request-normalizer for ai-bash-gen.
+A ordem das tasks deve ser estável e respeitar precedência, porém tasks independentes não devem receber dependências artificiais. O runtime pode executá-las em paralelo.
 
-Convert the user's request, written in any human language, into a structured NormalizedRequest.
-Return ONLY protobuf text for ai_bash_gen.v1.NormalizedRequest.
+Fan-out é permitido pela reutilização da mesma referência.
 
-Rules:
-- Write semantic instructions and descriptions in English.
-- Preserve literal values exactly as supplied by the user.
-- Split the request into small logical tasks.
-- Emit tasks in canonical execution order: first logical transformation first.
-- Each task must have a unique snake_case id and exactly one named output.
-- A task output may be consumed by zero, one, or many later tasks.
-- Use result_ref only when a task actually consumes data produced by a previous task.
-- Do not create artificial result_ref links between independent tasks.
-- Use depends_on only for control dependencies that do not carry data.
-- Keep all tasks implementation-independent.
-- Do not choose Bash commands, programs, capabilities, packages, databases or tools.
-- Do not generate Bash.
-- Do not execute anything.
-- Do not invent missing values.
-- If required information is missing, set status: NORMALIZATION_STATUS_MISSING_INFORMATION and populate missing_inputs.
-- Otherwise set status: NORMALIZATION_STATUS_READY.
-- canonical_instruction must describe the complete requested goal in English.
-- input_description and output_description must each contain a valid compact JSON object, never free-form prose.
-- The JSON object must describe the logical fields, types and required/optional nature of the task input or output.
-- Keep TaskInput and TaskOutput contracts consistent with the JSON objects in input_description and output_description.
-- For simple scalar values use DATA_KIND_TEXT unless a more specific DataKind is evident.
-- Use DATA_KIND_PATH for filesystem paths.
-- If several user-visible results must be returned, add a final implementation-independent aggregation task whose output is a JSON object containing those results.
-- final_output_ref must reference the output of the final user-visible task.
-- Return no Markdown and no explanation.
+Fan-in é representado por múltiplos campos de input apontando para resultados predecessores. O normalizador não cria uma task de merge quando a necessidade é apenas montagem estrutural do objeto de entrada.
 
-Minimal shape:
-intent: "..."
-canonical_instruction: "..."
-input_description: "{\"request\":{\"type\":\"text\",\"required\":true}}"
-output_description: "{\"result\":{\"type\":\"object\",\"required\":true}}"
-tasks {
-  id: "..."
-  instruction: "..."
-  input_description: "{\"input\":{\"type\":\"text\",\"required\":true}}"
-  output_description: "{\"output\":{\"type\":\"text\",\"required\":true}}"
-  output {
-    name: "..."
-    contract {
-      kind: DATA_KIND_TEXT
-      encoding: STREAM_ENCODING_TEXT_UTF8
-    }
-  }
-}
-final_output_ref: "..."
-status: NORMALIZATION_STATUS_READY
-```
+## Regras canônicas
 
-## Compatibilidade com o runtime
+O agente deve:
 
-O código de referência `main@a734af859d800487b51b5136d5772397dc12ffc6` usa um `normalizerSystemPrompt` compilado dentro de `src/go/internal/pipeline/runner.go`. O texto acima incorpora a base desse prompt e acrescenta as regras de sequência, fan-out/fan-in de resultados e contratos JSON solicitadas.
+- escrever instruction e descrições semânticas em inglês;
+- preservar valores literais exatamente como fornecidos;
+- dividir a solicitação em tasks pequenas e semanticamente independentes;
+- manter IDs únicos em `snake_case`;
+- definir input, instruction e output contract para cada task;
+- não criar dependências apenas para produzir sequência linear;
+- não escolher Bash commands, programs, capabilities, packages, databases ou tools;
+- não gerar Bash;
+- não executar ações;
+- não inventar valores ausentes;
+- retornar `MISSING_INFORMATION` quando uma entrada obrigatória não puder ser determinada;
+- definir `final_output_ref` para o resultado solicitado ao usuário.
 
-Enquanto o prompt continuar compilado no binário, qualquer mudança neste documento não altera o daemon instalado. A externalização e recarga do prompt são requisitos de [OPS-0001](../runtime/manutencao-inferencia.md).
+## Compatibilidade com o runtime atual
+
+A implementação atual ainda utiliza o schema e prompt anteriores. Este documento descreve a arquitetura-alvo e permanece em `refinement` até o contrato físico e a implementação serem reconciliados.
 
 ## Critérios de aceite
 
-- A saída contém somente TextProto de `NormalizedRequest`.
-- As tasks aparecem em sequência lógica determinística.
-- Tasks independentes não recebem dependências artificiais.
-- Outputs podem ter zero, um ou vários consumidores.
-- `result_ref` aponta somente para outputs anteriores existentes.
-- `depends_on` representa somente dependência de controle.
-- `input_description` e `output_description` contêm objetos JSON válidos.
+- a saída contém somente TextProto de `NormalizedRequest`;
+- cada task possui input lógico, instruction e output contract determináveis;
+- tasks independentes permanecem independentes;
+- `result_ref` aponta somente para outputs anteriores existentes;
+- fan-in estrutural não cria transformação artificial;
+- nenhum detalhe da ABI JSON aparece como escolha do normalizador;
 - `final_output_ref` aponta para o resultado final solicitado.
-- O normalizador não escolhe implementação nem executa ações.
