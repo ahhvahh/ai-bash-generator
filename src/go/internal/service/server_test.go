@@ -12,7 +12,7 @@ import (
 
 type fakeGenerator struct{}
 
-func (fakeGenerator) Generate(_ context.Context, req protocol.GenerateRequest, progress func(protocol.Stage, protocol.ProgressState, string) error) (protocol.BashArtifact, error) {
+func (fakeGenerator) Generate(_ context.Context, req protocol.GenerateRequest, progress func(protocol.Stage, protocol.ProgressState, string) error) (protocol.GenerateResult, error) {
 	for _, stage := range []protocol.Stage{
 		protocol.StageRequestNormalizer,
 		protocol.StageSearchCapabilities,
@@ -21,13 +21,13 @@ func (fakeGenerator) Generate(_ context.Context, req protocol.GenerateRequest, p
 		protocol.StageBashOutput,
 	} {
 		if err := progress(stage, protocol.StateStarted, "start"); err != nil {
-			return protocol.BashArtifact{}, err
+			return protocol.GenerateResult{}, err
 		}
 		if err := progress(stage, protocol.StateCompleted, "ok"); err != nil {
-			return protocol.BashArtifact{}, err
+			return protocol.GenerateResult{}, err
 		}
 	}
-	return protocol.BashArtifact{Filename: req.RequestedFilename, Content: "#!/usr/bin/env bash\necho ok\n", SHA256: "abc"}, nil
+	return protocol.GenerateResult{Artifact: protocol.BashArtifact{Filename: req.RequestedFilename, Content: "#!/usr/bin/env bash\necho ok\n", SHA256: "abc"}}, nil
 }
 
 func TestServerStreamsPipelineAndReturnsArtifact(t *testing.T) {
