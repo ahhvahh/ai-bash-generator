@@ -6,28 +6,26 @@ Esta é a raiz documental do projeto, organizada conforme o Architecture Documen
 
 `Decisão → Desenho → Especificação → Desenvolvimento → Ativação`
 
-A documentação desta branch foi reorganizada a partir do conteúdo anteriormente distribuído entre `docs/analysis/`, `docs/pipeline/`, `docs/AGENTS.md` e `docs/MCP.md`.
-
 ## Decisões arquiteturais
 
 ### Refinadas
 
-- [ADR-0001 — Pipeline híbrido LLM e determinístico](adr/pipeline/pipeline-hibrido.md)
+- [ADR-0001 — Pipeline híbrido com composição determinística](adr/pipeline/pipeline-hibrido.md)
 - [ADR-0002 — Protobuf e TextProto](adr/contratos/protobuf-e-textproto.md)
-- [ADR-0003 — ABI stdout/stdin](adr/execucao/abi-stdout-stdin.md)
+- [ADR-0003 — ABI JSON por stdin/stdout](adr/execucao/abi-stdout-stdin.md)
 - [ADR-0004 — PostgreSQL e versões imutáveis de capabilities](adr/persistencia/catalogo-capabilities.md)
 - [ADR-0005 — Orquestração e autorização de MCPs](adr/integracoes/orquestracao-mcp.md)
 - [ADR-0006 — Publicação e materialização independentes](adr/pipeline/publicacao-materializacao.md)
 - [ADR-0007 — Capabilities geradas como FUNCTION](adr/geracao/capabilities-geradas.md)
+- [ADR-0009 — Contrato lógico separado do transporte](adr/contratos/contrato-logico-e-stream.md)
+- [ADR-0010 — Binding por função de capability](adr/execucao/binding-invocacao.md)
 
 ### Em refinamento
 
 - [ADR-0008 — Identidade e pinagem de versão da capability](adr/catalogo/pinagem-versao-capability.md)
-- [ADR-0009 — Contrato lógico separado do encoding](adr/contratos/contrato-logico-e-stream.md)
-- [ADR-0010 — Binding determinístico de invocação](adr/execucao/binding-invocacao.md)
 - [ADR-0011 — Isolamento de functions geradas](adr/execucao/isolamento-functions.md)
 - [ADR-0012 — Efeitos e autorização de capabilities](adr/seguranca/efeitos-capabilities.md)
-- [ADR-0013 — Sessão e orçamento de contexto do gerador](adr/runtime/sessao-gerador.md)
+- [ADR-0013 — Sessão e orçamento do gerador de capability](adr/runtime/sessao-gerador.md)
 - [ADR-0014 — Lifecycle de modelos](adr/runtime/lifecycle-modelos.md)
 - [ADR-0015 — Protocolo externo do daemon](adr/api/protocolo-daemon.md)
 
@@ -40,31 +38,38 @@ A documentação desta branch foi reorganizada a partir do conteúdo anteriormen
 ## Especificações
 
 ### Módulos
+
 - [MOD-0001 — Request Normalizer](especificacao/modulos/request-normalizer.md)
 - [MOD-0002 — Capability Search](especificacao/modulos/capability-search.md)
-- [MOD-0003 — Bash Generator](especificacao/modulos/bash-generator.md)
+- [MOD-0003 — Capability Function Generator](especificacao/modulos/capability-function-generator.md)
 - [MOD-0004 — Validator](especificacao/modulos/validator.md)
-- [MOD-0005 — Bash Output](especificacao/modulos/bash-output.md)
+- [MOD-0005 — Bash Output e Assembler](especificacao/modulos/bash-output.md)
 - [MOD-0006 — Tool/MCP Orchestrator](especificacao/modulos/tool-orchestrator.md)
 
 ### Contratos
+
 - [CTR-0001 — Contratos Protobuf do pipeline](especificacao/contratos/pipeline-protobuf.md)
 - [CTR-0002 — MCP](especificacao/contratos/mcp.md)
 - [CTR-0003 — Configuração de agentes](especificacao/contratos/agentes.md)
 - [CTR-0004 — API externa do daemon](especificacao/contratos/api-daemon.md)
+- [CTR-0005 — ABI JSON de functions](especificacao/contratos/function-json.md)
 
 ### Persistência e integrações
+
 - [PST-0001 — Catálogo de capabilities](especificacao/persistencia/catalogo-capabilities.md)
 - [INT-0001 — Google Mail MCP](especificacao/integracoes/google-mail.md)
 
 ### Prompts
+
 - [PRM-0001 — Request Normalizer](especificacao/prompts/request-normalizer.md)
-- [PRM-0002 — Bash Generator](especificacao/prompts/bash-generator.md)
+- [PRM-0002 — Capability Function Generator](especificacao/prompts/capability-function-generator.md)
 
 ### Runtime e operação
+
 - [OPS-0001 — Manutenção da inferência](especificacao/runtime/manutencao-inferencia.md)
 
 ### Fluxos
+
 - [FLW-0001 — Geração de Bash](especificacao/fluxos/geracao-bash.md)
 - [FLW-0002 — Publicação de capability](especificacao/fluxos/publicacao-capability.md)
 - [FLW-0003 — Informação obrigatória ausente](especificacao/fluxos/informacao-ausente.md)
@@ -72,10 +77,20 @@ A documentação desta branch foi reorganizada a partir do conteúdo anteriormen
 - [FLW-0005 — Cancelamento e timeout](especificacao/fluxos/cancelamento-timeout.md)
 - [FLW-0006 — Execução futura do artifact](especificacao/fluxos/execucao-artifact.md)
 
+## Arquitetura funcional atual documentada
+
+O fluxo-alvo é:
+
+`UserRequest → LLM normaliza → tasks estruturadas → busca capabilities → gera FUNCTION somente quando faltar solução → valida DAG/functions → assembler determinístico → BashArtifact`
+
+O plano de controle permanece Protobuf/TextProto. O payload funcional entre functions no artifact é JSON UTF-8.
+
+Tasks independentes permanecem independentes no DAG; paralelismo não é decidido pela LLM.
+
 ## Pendências
 
 As lacunas, gates bloqueados e decisões ainda necessárias estão consolidados em [pendencias.md](pendencias.md).
 
 ## Implementação relacionada
 
-A documentação deve distinguir explicitamente comportamento implementado de arquitetura-alvo. Para o runtime de normalização e geração atualmente analisado, a referência de código é `main@a734af859d800487b51b5136d5772397dc12ffc6`; diferenças entre branches precisam ser reconciliadas antes de tratar a documentação como reflexo integral do binário instalado.
+A documentação distingue comportamento implementado de arquitetura-alvo. As mudanças de normalização estruturada, geração apenas de FUNCTION e assembly determinístico ainda precisam ser reconciliadas com a implementação antes de os documentos correspondentes avançarem para estados de desenvolvimento.
