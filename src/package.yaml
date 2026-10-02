@@ -111,9 +111,7 @@ build:
         - 'if test -f "$MODEL_CACHE" && printf "%s  %s\n" "$MODEL_SHA256" "$MODEL_CACHE" | sha256sum -c - >/dev/null 2>&1; then echo "[build] reutilizando modelo em cache: $MODEL_CACHE"; else rm -f "$MODEL_CACHE" "$MODEL_CACHE.part"; curl --fail --location --retry 3 --retry-delay 2 --output "$MODEL_CACHE.part" "$MODEL_URL"; printf "%s  %s\n" "$MODEL_SHA256" "$MODEL_CACHE.part" | sha256sum -c -; mv "$MODEL_CACHE.part" "$MODEL_CACHE"; fi'
         - 'install -m 0644 "$MODEL_CACHE" "$PROJECT_ROOT/bin/amd64/model.gguf"'
         - 'test "$(LC_ALL=C head -c 4 "$PROJECT_ROOT/bin/amd64/model.gguf")" = "GGUF" || { echo "[ERRO] modelo não possui assinatura GGUF." >&2; exit 1; }'
-        - 'install -m 0755 "$PROJECT_ROOT/install-binary.sh" "$PROJECT_ROOT/bin/amd64/install-binary.sh"'
         - 'install -m 0755 "$PROJECT_ROOT/test-binary.sh" "$PROJECT_ROOT/bin/amd64/test-binary.sh"'
-        - 'install -m 0755 "$PROJECT_ROOT/test-installer.sh" "$PROJECT_ROOT/bin/amd64/test-installer.sh"'
         - 'install -m 0755 "$PROJECT_ROOT/test-generation.sh" "$PROJECT_ROOT/bin/amd64/test-generation.sh"'
       output:
         root: "bin/amd64"
@@ -278,25 +276,13 @@ publication:
       mode: "0644"
 
     - source: "ai-bash-gen-generation-test"
-      destination: "/usr/lib/ai-bash-gen/ai-bash-gen-generation-test"
-      owner: "root"
-      group: "root"
-      mode: "0755"
-
-    - source: "install-binary.sh"
-      destination: "/usr/lib/ai-bash-gen/tools/install-binary.sh"
+      destination: "/usr/lib/ai-bash-gen/tools/ai-bash-gen-generation-test"
       owner: "root"
       group: "root"
       mode: "0755"
 
     - source: "test-binary.sh"
       destination: "/usr/lib/ai-bash-gen/tools/test-binary.sh"
-      owner: "root"
-      group: "root"
-      mode: "0755"
-
-    - source: "test-installer.sh"
-      destination: "/usr/lib/ai-bash-gen/tools/test-installer.sh"
       owner: "root"
       group: "root"
       mode: "0755"
