@@ -61,6 +61,9 @@ A documentação desta branch foi reorganizada a partir do conteúdo anteriormen
 - [PRM-0001 — Request Normalizer](especificacao/prompts/request-normalizer.md)
 - [PRM-0002 — Bash Generator](especificacao/prompts/bash-generator.md)
 
+### Runtime e operação
+- [OPS-0001 — Manutenção da inferência](especificacao/runtime/manutencao-inferencia.md)
+
 ### Fluxos
 - [FLW-0001 — Geração de Bash](especificacao/fluxos/geracao-bash.md)
 - [FLW-0002 — Publicação de capability](especificacao/fluxos/publicacao-capability.md)
@@ -75,4 +78,4 @@ As lacunas, gates bloqueados e decisões ainda necessárias estão consolidados 
 
 ## Implementação relacionada
 
-Referências existentes para `proto/` e `src/` são apenas referências de rastreabilidade. Esta adequação documental não usou arquivos fora de `/docs` como fonte de validação.
+A documentação deve distinguir explicitamente comportamento implementado de arquitetura-alvo. Para o runtime de normalização e geração atualmente analisado, a referência de código é `main@a734af859d800487b51b5136d5772397dc12ffc6`; diferenças entre branches precisam ser reconciliadas antes de tratar a documentação como reflexo integral do binário instalado.

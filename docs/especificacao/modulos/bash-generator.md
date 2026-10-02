@@ -3,55 +3,64 @@
 ![MOD](https://img.shields.io/badge/MOD-MOD--0003-1f883d?style=flat-square)
 ![Status](https://img.shields.io/badge/Status-refinement-d4a72c?style=flat-square)
 
-## Objetivo
+## Objetivo atual
 
-Selecionar, compor ou gerar capabilities e produzir um `GenerationPlan`; nunca produzir o arquivo Bash final diretamente.
+Gerar código-fonte Bash a partir de uma `NormalizedRequest` validada e dos candidatos retornados pelo Capability Catalog.
+
+Na implementação de referência `main@a734af859d800487b51b5136d5772397dc12ffc6`, o módulo produz Bash diretamente. A produção intermediária de `GenerationPlan` pertence à arquitetura-alvo e ainda não representa o comportamento atual do daemon.
 
 ## Dependências
 
 - [DSG-0001 — Pipeline de geração](../../desenho/pipeline-geracao.md)
-- [ADR-0007 — Capabilities geradas](../../adr/geracao/capabilities-geradas.md)
-- [ADR-0008 — Pinagem de versão](../../adr/catalogo/pinagem-versao-capability.md)
-- [ADR-0010 — Binding de invocação](../../adr/execucao/binding-invocacao.md)
-- [ADR-0013 — Sessão do gerador](../../adr/runtime/sessao-gerador.md)
-- [CTR-0001 — Protobuf](../contratos/pipeline-protobuf.md)
+- [MOD-0001 — Request Normalizer](request-normalizer.md)
+- [MOD-0002 — Capability Search](capability-search.md)
 - [PRM-0002 — Prompt do gerador](../prompts/bash-generator.md)
+- [OPS-0001 — Manutenção da inferência](../runtime/manutencao-inferencia.md)
 
 ## Responsabilidades
 
-- preferir uma capability composta compatível;
-- compor o menor conjunto compatível quando necessário;
-- solicitar detalhes somente de candidatos relevantes;
-- gerar somente comportamento ausente;
-- finalizar com `GenerationPlan`;
-- respeitar limites de turnos, tools e contexto.
+- consumir a NormalizedRequest validada;
+- respeitar a ordem canônica das tasks;
+- respeitar `result_ref` e `depends_on`;
+- aceitar outputs sem consumidores quando eles forem resultados válidos;
+- reutilizar o mesmo resultado lógico em fan-out;
+- respeitar os objetos JSON de definição de entrada e saída;
+- considerar os candidatos do catálogo local;
+- produzir somente Bash;
+- não executar o script;
+- não inventar valores;
+- produzir fonte compatível com `bash -n`.
 
 ## Entradas
 
-`GeneratorTurnRequest` com request normalizado, candidatos e respostas de tools.
+O runtime atual monta uma entrada contendo:
 
-## Saídas
+- `NormalizedRequest` em TextProto;
+- candidatos retornados pelo Capability Catalog.
 
-`GeneratorToolRequests` ou `GenerationPlan`.
+## Saída
 
-## Interfaces e contratos
+Código-fonte Bash em texto.
 
-- [CTR-0001](../contratos/pipeline-protobuf.md)
-- [CTR-0002 — MCP](../contratos/mcp.md)
+## Validação
+
+O pipeline executa `bash -n`. Quando a primeira geração falha, o erro de validação pode ser devolvido ao gerador para uma nova tentativa, dentro do limite configurado.
 
 ## Restrições
 
-Capability existente só pode ser usada depois de carregar sua definição completa. Novas capabilities geradas pelo LLM são FUNCTION.
+- nenhuma execução automática do script;
+- nenhuma operação destrutiva implícita;
+- nenhuma criação de valor ausente da solicitação;
+- nenhuma perda de task ou transformação descrita pelo normalizador.
 
-**BLOCKED:** versão fixada, binding de invocação e orçamento de contexto ainda dependem de ADRs em refinamento.
+## Evolução arquitetural
+
+`GenerationPlan`, tool loop, binding determinístico e publicação de capabilities permanecem objetivos de arquitetura. Enquanto não estiverem implementados no runtime, devem ser identificados como evolução futura e não como comportamento já disponível.
 
 ## Critérios de aceite
 
-- Não existe campo de script livre no plano.
-- Tools passam pelo Orchestrator.
-- Valores específicos da requisição ficam em bindings.
-- O plano referencia apenas capabilities resolvidas ou geradas no próprio plano.
-
-## Implementação relacionada
-
-Referência histórica: `src/go/internal/pipeline/` e integração de inferência; não verificadas nesta adequação.
+- O Bash representa todas as tasks necessárias.
+- A ordem lógica e dependências são preservadas.
+- O conteúdo retornado contém somente código Bash.
+- `bash -n` aprova a saída.
+- Os parâmetros e prompt do agente podem ser mantidos conforme OPS-0001 após a implementação do plano de externalização.
