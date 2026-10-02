@@ -5,57 +5,63 @@
 
 ## Objetivo
 
-Validar deterministicamente o `GenerationPlan`, capabilities resolvidas e novas functions antes de qualquer materialização.
+Validar deterministicamente o DAG de tasks, capabilities resolvidas e functions geradas antes da materialização do artifact.
 
 ## Dependências
 
 - [DSG-0001 — Pipeline de geração](../../desenho/pipeline-geracao.md)
-- [ADR-0003 — ABI](../../adr/execucao/abi-stdout-stdin.md)
-- [ADR-0010 — Binding de invocação](../../adr/execucao/binding-invocacao.md)
+- [ADR-0003 — ABI JSON](../../adr/execucao/abi-stdout-stdin.md)
+- [ADR-0010 — Binding por função](../../adr/execucao/binding-invocacao.md)
 - [ADR-0011 — Isolamento de functions](../../adr/execucao/isolamento-functions.md)
 - [ADR-0012 — Efeitos](../../adr/seguranca/efeitos-capabilities.md)
 - [CTR-0001 — Protobuf](../contratos/pipeline-protobuf.md)
+- [CTR-0005 — ABI JSON de functions](../contratos/function-json.md)
 
 ## Responsabilidades
 
-A ordem prevista é:
+A validação prevista inclui:
 
-1. validação Protobuf;
-2. grafo;
-3. contratos;
-4. versões;
-5. policy;
-6. preview determinístico do Bash;
-7. `bash -n`;
-8. ShellCheck;
-9. dependências.
+1. mensagens de controle;
+2. DAG e referências;
+3. compatibilidade de input e output;
+4. versões de capabilities;
+5. presença e estrutura dos wrappers Bash;
+6. policy;
+7. composição determinística de preview;
+8. `bash -n`;
+9. ShellCheck;
+10. dependências externas declaradas.
 
 ## Entradas
 
-`ValidationRequest` com plano e definições completas das versões utilizadas.
+Conjunto resolvido de tasks com as versões completas das capabilities utilizadas e functions geradas quando houver.
 
 ## Saídas
 
-`ValidationResult` com `valid`, plano, capabilities resolvidas e issues estruturadas.
+Resultado estruturado com `valid`, conjunto resolvido e issues.
 
 ## Restrições
 
-- O script não é executado.
-- SCRIPT/APPLICATION devem ter integridade externa verificável quando aplicável.
-- SERVICE deve ter cliente controlado conforme contrato.
-- Nova capability de LLM é FUNCTION.
+- o script não é executado;
+- toda capability precisa apresentar uma function compatível com CTR-0005;
+- SCRIPT, APPLICATION e SERVICE devem manter sua integridade externa verificável quando aplicável;
+- nova capability produzida por LLM é FUNCTION;
+- uma saída não pode alimentar input estruturalmente incompatível;
+- routing e Input Binder não substituem transformação funcional;
 - ShellCheck indisponível deve resultar em falha explícita na política atual.
 
-**BLOCKED:** binding, isolamento de function e efeitos ainda não estão refinados. Semântica de exit codes e testes funcionais também permanece pendente.
+**BLOCKED:** isolamento de function e efeitos ainda não estão refinados. Taxonomia final de exit codes e detalhes operacionais de concorrência também permanecem pendentes.
 
 ## Critérios de aceite
 
-- Ciclos e referências inválidas são rejeitados.
-- Contratos incompatíveis são rejeitados.
-- Capability existente sem versão resolvida é rejeitada.
-- Policy é aplicada fora do LLM.
-- Falha na segunda validação após correção encerra a geração.
+- ciclos e referências inválidas são rejeitados;
+- contratos incompatíveis são rejeitados;
+- capability existente sem versão resolvida é rejeitada;
+- capability sem wrapper funcional válido é rejeitada;
+- policy é aplicada fora do LLM;
+- preview não contém composição decidida por inferência;
+- falha final de validação impede a criação do artifact.
 
 ## Implementação relacionada
 
-Referência histórica: validador do pipeline; não verificado nesta adequação.
+Arquitetura-alvo ainda não verificada na implementação atual.
