@@ -21,7 +21,7 @@ import (
 )
 
 type Generator interface {
-	Generate(ctx context.Context, request protocol.GenerateRequest, progress func(protocol.Stage, protocol.ProgressState, string) error) (protocol.BashArtifact, error)
+	Generate(ctx context.Context, request protocol.GenerateRequest, progress func(protocol.Stage, protocol.ProgressState, string) error) (protocol.GenerateResult, error)
 }
 
 type Server struct {
@@ -240,13 +240,23 @@ func (s *Server) handle(conn net.Conn) error {
 				"error_message", result.ErrorMessage,
 			)
 		} else {
-			logger.Info("requisição concluída",
-				"event", "request_complete",
-				"duration_ms", result.ElapsedMS,
-				"filename", result.Artifact.Filename,
-				"content_bytes", len(result.Artifact.Content),
-				"sha256", result.Artifact.SHA256,
-			)
+			if result.StageOutput != nil {
+				logger.Info("requisição de etapa concluída",
+					"event", "request_stage_complete",
+					"duration_ms", result.ElapsedMS,
+					"stage", result.StageOutput.Stage.String(),
+					"content_type", result.StageOutput.ContentType,
+					"content_bytes", len(result.StageOutput.Content),
+				)
+			} else {
+				logger.Info("requisição concluída",
+					"event", "request_complete",
+					"duration_ms", result.ElapsedMS,
+					"filename", result.Artifact.Filename,
+					"content_bytes", len(result.Artifact.Content),
+					"sha256", result.Artifact.SHA256,
+				)
+			}
 		}
 
 		if err := protocol.WriteEvent(conn, protocol.GenerateEvent{Result: &result}); err != nil {
@@ -270,11 +280,11 @@ func (s *Server) handle(conn net.Conn) error {
 		}
 	}
 
-	artifact, err := s.Generator.Generate(ctx, request, sendProgress)
+	result, err := s.Generator.Generate(ctx, request, sendProgress)
 	if err != nil {
 		return sendError("GENERATION_FAILED", err.Error())
 	}
-	return sendResult(protocol.GenerateResult{Artifact: artifact})
+	return sendResult(result)
 }
 
 func newRequestID() string {
