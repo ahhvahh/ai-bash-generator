@@ -80,6 +80,7 @@ build:
       description: "Pacote Linux x86-64 autocontido com llama-server e modelo GGUF."
       commands:
         - 'for cmd in go git cmake c++ curl sha256sum install head; do command -v "$cmd" >/dev/null 2>&1 || { echo "[ERRO] dependência de build ausente: $cmd" >&2; exit 1; }; done'
+        - 'case "$(uname -m)" in x86_64|amd64) ;; *) echo "[ERRO] build do runtime amd64 exige host x86-64; encontrado: $(uname -m)" >&2; exit 1 ;; esac'
         - 'test -f "$PROJECT_ROOT/src/go/go.mod" || { echo "[ERRO] go.mod não encontrado." >&2; exit 1; }'
         - 'for f in install-binary.sh test-binary.sh test-installer.sh test-generation.sh; do test -f "$PROJECT_ROOT/$f" || { echo "[ERRO] arquivo obrigatório ausente: $f" >&2; exit 1; }; done'
         - 'rm -rf "$PROJECT_ROOT/bin" "$PROJECT_ROOT/.package-llama.cpp" && mkdir -p "$PROJECT_ROOT/bin/amd64"'
@@ -105,7 +106,7 @@ build:
         - '"$PROJECT_ROOT/bin/amd64/llama-server" --help >/dev/null 2>&1'
         - 'MODEL_URL="https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_0.gguf"'
         - 'MODEL_SHA256="57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf"'
-        - 'MODEL_CACHE="\${XDG_CACHE_HOME:-$HOME/.cache}/ai-bash-gen/Qwen3.5-0.8B-Q4_0.gguf"'
+        - 'MODEL_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/ai-bash-gen/Qwen3.5-0.8B-Q4_0.gguf"'
         - 'mkdir -p "$(dirname "$MODEL_CACHE")"'
         - 'if test -f "$MODEL_CACHE" && printf "%s  %s\n" "$MODEL_SHA256" "$MODEL_CACHE" | sha256sum -c - >/dev/null 2>&1; then echo "[build] reutilizando modelo em cache: $MODEL_CACHE"; else rm -f "$MODEL_CACHE" "$MODEL_CACHE.part"; curl --fail --location --retry 3 --retry-delay 2 --output "$MODEL_CACHE.part" "$MODEL_URL"; printf "%s  %s\n" "$MODEL_SHA256" "$MODEL_CACHE.part" | sha256sum -c -; mv "$MODEL_CACHE.part" "$MODEL_CACHE"; fi'
         - 'install -m 0644 "$MODEL_CACHE" "$PROJECT_ROOT/bin/amd64/model.gguf"'
@@ -127,7 +128,7 @@ build:
           - 'test -x "$OUTPUT_ROOT/llama-server"'
           - 'test -s "$OUTPUT_ROOT/model.gguf"'
           - '"$OUTPUT_ROOT/llama-server" --help >/dev/null 2>&1'
-          - 'ldd "$OUTPUT_ROOT/llama-server" 2>/dev/null | grep -q "not found" && { echo "[ERRO] llama-server possui biblioteca dinâmica ausente." >&2; exit 1; } || true'
+          - 'if ldd "$OUTPUT_ROOT/llama-server" 2>/dev/null | grep -q "not found"; then echo "[ERRO] llama-server possui biblioteca dinâmica ausente." >&2; exit 1; fi'
           - 'printf "%s  %s\n" "57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf" "$OUTPUT_ROOT/model.gguf" | sha256sum -c -'
           - '"$OUTPUT_ROOT/test-binary.sh" "$OUTPUT_ROOT/ai-bash-gen"'
 
