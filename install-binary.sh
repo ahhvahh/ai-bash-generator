@@ -27,7 +27,7 @@ DEFAULT_MODEL_KEY="qwen35-08b-q4"
 FORCE_MODE=0
 BIN_ARG=""
 
-REQUIRED_DEBIAN_PACKAGES=(bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils findutils)
+REQUIRED_DEBIAN_PACKAGES=(bash coreutils grep mawk passwd util-linux libc-bin systemd file binutils findutils postgresql postgresql-client)
 LLAMA_CPP_BUILD_PACKAGES=(git cmake build-essential ca-certificates)
 MODEL_DOWNLOAD_PACKAGES=(curl ca-certificates)
 
@@ -982,7 +982,7 @@ prepare_directories() {
 
 
 create_bootstrap_config() {
-  local config_dir="$1" group="$2" llama_binary="$3" model_file="$4"
+  local config_dir="$1" group="$2" llama_binary="$3" model_file="$4" service_user="$5"
   local config_file temp_config
   config_file="$config_dir/config.yaml"
 
@@ -1002,6 +1002,26 @@ llama:
   request_timeout: $DEFAULT_REQUEST_TIMEOUT
   max_tokens: $DEFAULT_MAX_TOKENS
   temperature: $DEFAULT_TEMPERATURE
+
+# Agentes LLM independentes. Por padrão ambos reutilizam o modelo instalado;
+# os caminhos podem ser alterados posteriormente para modelos distintos.
+normalizer:
+  model: "$model_file"
+  max_tokens: 1200
+  temperature: 0.1
+
+generator:
+  model: "$model_file"
+  max_tokens: $DEFAULT_MAX_TOKENS
+  temperature: $DEFAULT_TEMPERATURE
+
+database:
+  enabled: true
+  host: "/var/run/postgresql"
+  port: 5432
+  name: "ai-bash-gen"
+  user: "$service_user"
+  search_limit: 8
 __CONFIG__
 
   "${SUDO[@]}" install -o root -g "$group" -m 0640 "$temp_config" "$config_file"
@@ -1061,6 +1081,93 @@ migrate_managed_runtime_defaults() {
 
   ok "configuração atualizada para context_size=$DEFAULT_CONTEXT_SIZE, request_timeout=$DEFAULT_REQUEST_TIMEOUT, max_tokens=$DEFAULT_MAX_TOKENS"
   info "backup da configuração: $backup"
+}
+
+
+setup_postgresql_catalog() {
+  local service_user="$1"
+  local database_name="ai-bash-gen"
+
+  command -v psql >/dev/null 2>&1 || die "psql não encontrado após instalação das dependências."
+  command -v createuser >/dev/null 2>&1 || die "createuser não encontrado após instalação do PostgreSQL."
+  command -v createdb >/dev/null 2>&1 || die "createdb não encontrado após instalação do PostgreSQL."
+
+  if command -v systemctl >/dev/null 2>&1; then
+    "${SUDO[@]}" systemctl enable --now postgresql >/dev/null 2>&1 || die "não foi possível iniciar/habilitar PostgreSQL."
+  fi
+
+  if ! "${SUDO[@]}" -u postgres psql -AtX -d postgres -v ON_ERROR_STOP=1 -v role="$service_user" \
+      -c "SELECT 1 FROM pg_roles WHERE rolname = :'role';" | grep -Fxq 1; then
+    info "criando role PostgreSQL: $service_user"
+    "${SUDO[@]}" -u postgres createuser --no-createdb --no-createrole --no-superuser "$service_user"
+  else
+    info "role PostgreSQL já existe e será reutilizada: $service_user"
+  fi
+
+  if ! "${SUDO[@]}" -u postgres psql -AtX -d postgres -v ON_ERROR_STOP=1 -v db="$database_name" \
+      -c "SELECT 1 FROM pg_database WHERE datname = :'db';" | grep -Fxq 1; then
+    info "criando banco PostgreSQL: $database_name"
+    "${SUDO[@]}" -u postgres createdb --owner="$service_user" "$database_name"
+  else
+    info "banco PostgreSQL já existe e será reutilizado: $database_name"
+  fi
+
+  info "aplicando schema idempotente do Capability Catalog..."
+  "${SUDO[@]}" -u postgres psql -X -v ON_ERROR_STOP=1 -v role="$service_user" -d "$database_name" <<'__AI_BASH_GEN_SQL__'
+SET ROLE :"role";
+
+CREATE SCHEMA IF NOT EXISTS capability_catalog;
+
+CREATE TABLE IF NOT EXISTS capability_catalog.capability (
+    id                  text PRIMARY KEY,
+    version             integer NOT NULL DEFAULT 1,
+    capability_type     text NOT NULL DEFAULT 'function',
+    description         text NOT NULL,
+    match_instruction   text NOT NULL,
+    input_description   text NOT NULL DEFAULT '',
+    output_description  text NOT NULL DEFAULT '',
+    implementation      text NOT NULL DEFAULT '',
+    dependencies        text NOT NULL DEFAULT '',
+    platform            text NOT NULL DEFAULT 'debian-linux',
+    risk_level          integer NOT NULL DEFAULT 0,
+    checksum            text NOT NULL DEFAULT '',
+    enabled             boolean NOT NULL DEFAULT true,
+    created_at          timestamptz NOT NULL DEFAULT now(),
+    updated_at          timestamptz NOT NULL DEFAULT now(),
+    search_vector tsvector GENERATED ALWAYS AS (
+        to_tsvector(
+            'simple',
+            coalesce(id, '') || ' ' ||
+            coalesce(description, '') || ' ' ||
+            coalesce(match_instruction, '') || ' ' ||
+            coalesce(input_description, '') || ' ' ||
+            coalesce(output_description, '')
+        )
+    ) STORED
+);
+
+CREATE INDEX IF NOT EXISTS capability_search_vector_idx
+    ON capability_catalog.capability USING GIN (search_vector);
+
+CREATE TABLE IF NOT EXISTS capability_catalog.capability_usage (
+    id              bigserial PRIMARY KEY,
+    capability_id   text NOT NULL REFERENCES capability_catalog.capability(id),
+    request_id      text NOT NULL,
+    used_at         timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (capability_id, request_id)
+);
+
+RESET ROLE;
+__AI_BASH_GEN_SQL__
+
+  if [[ "$CREATE_SERVICE_ACCOUNT" == "yes" ]]; then
+    if ! "${SUDO[@]}" -u "$service_user" psql -X -At -h /var/run/postgresql -d "$database_name" \
+        -c 'SELECT current_database();' | grep -Fxq "$database_name"; then
+      die "o usuário de serviço não conseguiu conectar ao PostgreSQL via peer auth."
+    fi
+  fi
+
+  ok "PostgreSQL/Capability Catalog configurado: database=$database_name role=$service_user"
 }
 
 install_runtime_assets() {
@@ -1510,6 +1617,8 @@ main() {
     authorize_client_user "$CLIENT_USER" "$SERVICE_GROUP"
   fi
 
+  setup_postgresql_catalog "$SERVICE_USER"
+
   install_binary "$BIN_SOURCE" "$BIN_TARGET"
   [[ -x "$BIN_TARGET" ]] || die "binário instalado não é executável: $BIN_TARGET"
   INSTALLED_VERSION="$("$BIN_TARGET" --version 2>&1)" || die "binário instalado falhou em --version: $BIN_TARGET"
@@ -1527,7 +1636,7 @@ main() {
       CREATE_BOOTSTRAP_CONFIG="yes"
     fi
     if [[ "$CREATE_BOOTSTRAP_CONFIG" == "yes" ]]; then
-      create_bootstrap_config "$CONFIG_DIR" "$SERVICE_GROUP" "$LLAMA_TARGET" "$MODEL_TARGET"
+      create_bootstrap_config "$CONFIG_DIR" "$SERVICE_GROUP" "$LLAMA_TARGET" "$MODEL_TARGET" "$SERVICE_USER"
     else
       migrate_managed_runtime_defaults "$CONFIG_DIR/config.yaml"
     fi
