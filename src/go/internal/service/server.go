@@ -203,12 +203,22 @@ func (s *Server) handle(conn net.Conn) error {
 		result.RequestID = requestID
 		result.ElapsedMS = uint64(time.Since(started).Milliseconds())
 
-		expectedStages := []protocol.Stage{
+		allStages := []protocol.Stage{
 			protocol.StageRequestNormalizer,
 			protocol.StageSearchCapabilities,
 			protocol.StageBashGenerator,
 			protocol.StageValidation,
 			protocol.StageBashOutput,
+		}
+		expectedStages := allStages
+		if request.StopAfterStage != protocol.StageUnspecified {
+			expectedStages = nil
+			for _, stage := range allStages {
+				expectedStages = append(expectedStages, stage)
+				if stage == request.StopAfterStage {
+					break
+				}
+			}
 		}
 		missingStages := make([]string, 0)
 		for _, stage := range expectedStages {
