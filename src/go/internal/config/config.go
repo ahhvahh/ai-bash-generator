@@ -262,7 +262,7 @@ func cleanScalar(value string) string {
 	if value == "" {
 		return ""
 	}
-	if strings.HasPrefix(value, """) && strings.HasSuffix(value, """) {
+	if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
 		if unquoted, err := strconv.Unquote(value); err == nil {
 			return unquoted
 		}
