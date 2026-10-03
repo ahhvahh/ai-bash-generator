@@ -1,48 +1,80 @@
-# Identidade e pinagem de versão da capability
+# Identidade, matching exato e pinagem de versão da capability
 
 ![ADR](https://img.shields.io/badge/ADR-ADR--0008-7a3e9d?style=flat-square)
-![Status](https://img.shields.io/badge/Status-refinement-d4a72c?style=flat-square)
-![Version](https://img.shields.io/badge/Version----6e7781?style=flat-square)
+![Status](https://img.shields.io/badge/Status-refined-0969da?style=flat-square)
+![Version](https://img.shields.io/badge/Version-1-6e7781?style=flat-square)
 
 ## Contexto
 
-A busca avalia uma versão ativa e o gerador pode solicitar o detalhe posteriormente.
+A busca precisa localizar uma função reutilizável a partir do objeto de entrada, objeto de saída e propósito esperado.
+
+Uma mesma função lógica pode receber novas versões para melhorar desempenho ou sua implementação sem alterar o contrato funcional esperado.
 
 ## Problema
 
-Resolver novamente a versão ativa em `get_capability(id)` permite TOCTOU. Metadados pesquisáveis que variam por versão também podem divergir do conteúdo imutável.
+A busca não pode escolher entre candidatos por similaridade, score ou interpretação semântica quando o catálogo já possui uma função exatamente compatível.
+
+Também é necessário garantir que a versão carregada seja exatamente a versão selecionada no catálogo, preservando histórico e permitindo evolução da implementação.
 
 ## Restrições
 
-- O candidato avaliado pelo pruning deve ser o mesmo carregado depois.
-- Identidade lógica deve permanecer estável.
-- Conteúdo versionável não pode ter duas fontes de verdade.
-
-## Opções consideradas
-
-### Resolver versão ativa novamente no detalhe
-
-Mantém API simples, mas não garante consistência.
-
-### Fixar `capability_version_id` no candidato
-
-A busca devolve a versão imutável usada pelo pruning e o detalhe carrega exatamente essa versão.
-
-### Metadados na identidade ou na versão
-
-Ainda precisa ser definido quais campos são realmente estáveis.
+- entrada, saída e propósito precisam coincidir de forma exata;
+- matching parcial, fuzzy ou por ranking não faz parte da V1;
+- versões publicadas permanecem imutáveis;
+- uma nova implementação otimizada não altera versões anteriores;
+- o pipeline deve carregar a versão exata retornada pela busca.
 
 ## Decisão
 
-Em refinamento. Nenhuma opção foi aprovada.
+A busca de capability na V1 usa correspondência exata entre três elementos:
+
+1. contrato lógico de entrada;
+2. contrato lógico de saída;
+3. propósito da função.
+
+Somente uma capability cuja entrada, saída e propósito sejam idênticos aos requisitos da task é considerada compatível.
+
+Depois de localizada a capability lógica compatível, a busca retorna sua versão ativa mais recente por `capability_version_id`.
+
+A versão retornada fica pinada durante todo o processamento da requisição. O carregamento posterior da definição completa usa diretamente esse `capability_version_id`; não ocorre nova resolução de versão.
+
+Uma refatoração destinada a melhorar desempenho ou implementação cria uma nova `capability_version`. As versões anteriores permanecem imutáveis para rastreabilidade.
+
+## Matching
+
+Na V1:
+
+- não existe score de similaridade;
+- não existe seleção por aproximação;
+- não existe desempate entre contratos diferentes;
+- diferença em entrada, saída ou propósito significa incompatibilidade;
+- ausência de correspondência exata encaminha a task para o fluxo de geração de nova FUNCTION.
+
+## Versionamento
+
+A identidade lógica da capability permanece estável enquanto entrada, saída e propósito permanecerem os mesmos.
+
+Mudanças de implementação que preservem esses três elementos geram nova versão da mesma capability.
+
+Quando uma nova versão se torna a versão ativa, `active_version_id` passa a apontar para ela. A busca devolve esse identificador de versão e o restante do pipeline mantém a pinagem.
+
+## Catálogo de objetos padrão
+
+Um catálogo de objetos/contratos padrão pode ser avaliado futuramente para aumentar o reúso de estruturas de entrada e saída.
+
+Essa possibilidade não altera a regra atual de matching exato e não é requisito para liberar esta decisão.
 
 ## Justificativa
 
-A revisão propõe fixar `capability_version_id` e mover metadados variáveis para a versão, mas isso precisa ser formalizado antes de liberar o desenho do catálogo.
+A regra elimina ambiguidades de ranking na V1 e permite otimizar uma função sem alterar sua identidade funcional nem perder versões anteriores.
 
 ## Consequências
 
-DSG-0002, MOD-0002, CTR-0001 e PST-0001 permanecem bloqueados.
+- Capability Search pode ser determinístico sem LLM;
+- ranking e desempate por similaridade deixam de ser requisito da V1;
+- `capability_version_id` é a chave canônica para carregar a versão resolvida;
+- metadados de implementação e conteúdo versionável pertencem à versão;
+- DSG-0002 não depende mais de decisão de ranking ou pinagem, mas continua sujeito às demais dependências declaradas.
 
 ## Dependências
 
@@ -50,7 +82,9 @@ DSG-0002, MOD-0002, CTR-0001 e PST-0001 permanecem bloqueados.
 
 ## Critérios de validação
 
-- Definir campos estáveis da identidade.
-- Definir campos versionados.
-- Definir chave canônica de `get_capability`.
-- Eliminar mudança de versão entre search e detail.
+- entrada, saída e propósito são comparados por igualdade;
+- diferença em qualquer um dos três impede reutilização;
+- a busca retorna `capability_version_id`;
+- o detalhe carrega exatamente o mesmo `capability_version_id`;
+- nova otimização de implementação cria nova versão;
+- versões anteriores não são alteradas in-place.
