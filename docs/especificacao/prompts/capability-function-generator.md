@@ -39,6 +39,10 @@ O agente deve:
 - usar stderr para diagnóstico;
 - não executar a function;
 - não gerar `main`;
+- gerar exatamente uma definição de FUNCTION;
+- não gerar helpers adicionais;
+- não gerar variáveis globais;
+- não gerar comandos executáveis fora da FUNCTION;
 - não encadear outras tasks;
 - não escolher dependências inexistentes no ambiente sem declará-las;
 - não inventar valores ausentes;
@@ -49,7 +53,7 @@ O agente deve:
 
 Fonte de uma única function Bash candidata.
 
-Namespace, nome final e demais regras estruturais dependem do ADR-0011 e não devem ser inventados pelo prompt enquanto estiverem em refinamento.
+O nome final da FUNCTION é controlado pela aplicação conforme ADR-0011. A resposta do agente não define múltiplas functions, helpers, globals ou inicialização top-level.
 
 ## Manutenção
 
@@ -61,4 +65,4 @@ O agente continua sujeito às regras operacionais de manutenção de prompt, mod
 - a function respeita CTR-0005;
 - a geração ocorre somente para task sem capability compatível;
 - a resposta não altera contratos ou dependências da task para facilitar a implementação;
-- detalhes ainda abertos de namespace permanecem explícitos como dependência, não são assumidos.
+- a resposta contém apenas a FUNCTION candidata permitida pela V1.
