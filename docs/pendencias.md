@@ -22,7 +22,7 @@ Estado consolidado após a adoção de tasks estruturadas, ABI JSON e composiç�
 1. schema Protobuf físico final para input lógico, output contract e conjunto de tasks/capabilities resolvidas;
 2. tipagem de literais e política para captura escalar de `result_ref`;
 3. taxonomia de códigos de saída das functions;
-4. limite de concorrência do DAG e regra para selecionar tasks prontas;
+4. regra para selecionar tasks prontas quando houver mais candidatas do que vagas;
 5. buffering/materialização de resultados de branches paralelos até fan-in;
 6. semântica de falha, cancelamento e cleanup quando uma branch paralela falhar;
 7. manifesto de dependências do `BashArtifact`;
@@ -66,10 +66,11 @@ Estado consolidado após a adoção de tasks estruturadas, ABI JSON e composiç�
 - DSG-0002 foi finalizado após o fechamento dessa fronteira de autorização;
 - na V1, cada capability gerada contém uma única FUNCTION para processamento pontual;
 - helpers, globals, múltiplas functions e código executável top-level ficam proibidos na V1;
-- o nome da FUNCTION é controlado pela aplicação e a estrutura é validada antes da materialização.
+- o nome da FUNCTION é controlado pela aplicação e a estrutura é validada antes da materialização;
+- na V1, cada execução do `BashArtifact` permite no máximo quatro tasks simultâneas.
 
 ## Critério para desenvolvimento
 
 Nenhum item dependente dos ADRs, desenhos e especificações ainda em `refinement` ou `backlog` deve ser tratado como liberado apenas pela existência de texto documental.
 
-Em especial, a execução paralela permanece **BLOCKED para implementação** até serem definidos limite de concorrência, armazenamento/buffering de resultados, falhas/cancelamento e cleanup.
+Em especial, a execução paralela permanece **BLOCKED para implementação completa** apesar do limite de quatro já estar definido; ainda faltam regra de seleção entre tasks prontas, armazenamento/buffering de resultados, falhas/cancelamento e cleanup.
