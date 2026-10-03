@@ -11,6 +11,7 @@ Delimitar a execução futura do artifact, separando-a do fluxo de geração.
 
 - [ADR-0003 — ABI stdout/stdin](../../adr/execucao/abi-stdout-stdin.md)
 - [MOD-0005 — Bash Output](../modulos/bash-output.md)
+- [ADR-0012 — Controle de acesso pelo ambiente](../../adr/seguranca/efeitos-capabilities.md)
 
 ## Gatilho
 
@@ -20,9 +21,12 @@ O usuário ou outro executor inicia explicitamente um artifact previamente gerad
 
 - artifact materializado;
 - dependências de runtime disponíveis;
-- permissões de execução concedidas quando necessárias.
+- usuário/processo executor definido pelo ambiente;
+- recursos e aplicações necessários acessíveis a esse executor.
 
 ## Fluxo principal
+
+O artifact executa com as permissões herdadas do usuário/processo que o iniciou. O artifact não recebe privilégios adicionais do catálogo, da LLM ou do assembler.
 
 Para functions incorporadas:
 
@@ -47,6 +51,8 @@ Depende de aplicação, serviço, socket ou recurso do host. A política de guar
 
 Exit code e stderr seguem contratos das capabilities e do artifact.
 
+Falha de permissão, recurso inacessível ou aplicação indisponível é falha de runtime. O artifact não deve interpretar essa falha como autorização para obter privilégios adicionais.
+
 ## Resultado
 
 Saída funcional ou falha de runtime.
@@ -66,3 +72,5 @@ A documentação ainda precisa decidir:
 - Dependências externas são declaradas.
 - O modo de portabilidade é inequívoco.
 - Runtime guards são definidos quando necessários.
+- O artifact respeita os privilégios do usuário/processo executor.
+- Somente recursos e aplicações disponíveis ao executor podem ser utilizados.
