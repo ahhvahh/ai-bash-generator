@@ -14,7 +14,7 @@ Definir o plano de controle estruturado que conecta normalização, busca, resol
 - [ADR-0008 — Pinagem de versão](../../adr/catalogo/pinagem-versao-capability.md)
 - [ADR-0009 — Contrato lógico e stream](../../adr/contratos/contrato-logico-e-stream.md)
 - [ADR-0010 — Binding por função](../../adr/execucao/binding-invocacao.md)
-- [ADR-0012 — Efeitos](../../adr/seguranca/efeitos-capabilities.md)
+- [ADR-0012 — Controle de acesso pelo ambiente](../../adr/seguranca/efeitos-capabilities.md)
 - [CTR-0005 — ABI JSON de functions](function-json.md)
 
 ## Tipo
@@ -102,6 +102,7 @@ Erros de controle devem ser estruturados e correlacionáveis. Erros das function
 - o normalizador não escolhe encoding da implementation;
 - capability existente somente é reutilizada com igualdade exata de input, propósito e output;
 - capability existente usada precisa carregar o mesmo `capability_version_id` retornado pela busca;
+- o plano de controle não concede privilégios de execução; autorização pertence ao ambiente executor conforme ADR-0012;
 - conjunto resolvido deve permitir reconstruir deterministicamente o DAG e o artifact;
 - alterações incompatíveis no schema exigem estratégia de versão.
 
