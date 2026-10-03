@@ -6,7 +6,6 @@ Estado consolidado após a adoção de tasks estruturadas, ABI JSON e composiç�
 
 | ID | Escopo bloqueado | Estado atual | Estado necessário | Informação ou decisão ausente | Dependências afetadas |
 |---|---|---|---|---|---|
-| ADR-0008 | Catálogo e busca | `refinement` | `refined` | Definir pinagem por `capability_version_id` e localização dos metadados versionáveis | DSG-0002, MOD-0002, CTR-0001, PST-0001 |
 | ADR-0011 | Functions geradas | `refinement` | `refined` | Definir análise estrutural, namespace, top-level proibido e colisões | MOD-0003, MOD-0004, FLW-0001 |
 | ADR-0012 | Segurança/policy | `refinement` | `refined` | Estruturar efeitos da capability e regra de autorização | DSG-0002, MOD-0004, CTR-0001 |
 | ADR-0013 | Geração de capability | `refinement` | `refined` | Definir orçamento, limites e número de turnos para gerar uma FUNCTION ausente | MOD-0003, FLW-0001, FLW-0004 |
@@ -18,7 +17,7 @@ Estado consolidado após a adoção de tasks estruturadas, ABI JSON e composiç�
 - **DSG-0002 — Catálogo de capabilities**
   - estado atual: `backlog`;
   - estado necessário: `finalized`;
-  - bloqueadores: ADR-0008 e ADR-0012.
+  - bloqueador: ADR-0012.
 
 - **DSG-0003 — Runtime do daemon**
   - estado atual: `backlog`;
@@ -45,12 +44,11 @@ Estado consolidado após a adoção de tasks estruturadas, ABI JSON e composiç�
 
 ## Pendências MEDIUM
 
-1. ranking e desempate determinísticos da busca;
-2. canonicalização formal da fingerprint;
-3. `risk_level` como enum/constraint;
-4. validação explícita de `requested_filename` e separação do diretório de saída;
-5. versionamento funcional de protocolo, pipeline e contrato de capability;
-6. benchmark de representação na fronteira LLM, sem alterar a decisão de JSON como payload funcional.
+1. canonicalização formal da fingerprint;
+2. `risk_level` como enum/constraint;
+3. validação explícita de `requested_filename` e separação do diretório de saída;
+4. versionamento funcional de protocolo, pipeline e contrato de capability;
+5. benchmark de representação na fronteira LLM, sem alterar a decisão de JSON como payload funcional.
 
 ## Decisões fechadas nesta revisão
 
@@ -64,7 +62,11 @@ Estado consolidado após a adoção de tasks estruturadas, ABI JSON e composiç�
 - LLM gera FUNCTION somente quando a task não possui solução compatível;
 - o Bash Output realiza assembly determinístico;
 - tasks formam um DAG e tarefas independentes não devem ser serializadas artificialmente;
-- fan-in estrutural é responsabilidade do Input Binder e não cria capability artificial.
+- fan-in estrutural é responsabilidade do Input Binder e não cria capability artificial;
+- Capability Search usa matching exato de input, output e propósito;
+- ausência de correspondência exata encaminha a task para geração de nova FUNCTION;
+- a busca retorna o `capability_version_id` da versão ativa mais recente e o pipeline mantém essa pinagem;
+- melhorias de performance/implementação de uma mesma função são novas versões imutáveis da mesma capability.
 
 ## Critério para desenvolvimento
 
