@@ -13,6 +13,7 @@ Montar deterministicamente o script Bash final a partir de tasks e functions val
 - [ADR-0003 — ABI JSON](../../adr/execucao/abi-stdout-stdin.md)
 - [ADR-0006 — Publicação e materialização](../../adr/pipeline/publicacao-materializacao.md)
 - [ADR-0010 — Binding por função](../../adr/execucao/binding-invocacao.md)
+- [ADR-0016 — Limite de paralelismo do DAG](../../adr/execucao/limite-paralelismo-dag.md)
 - [CTR-0005 — ABI JSON de functions](../contratos/function-json.md)
 
 ## Responsabilidades
@@ -61,11 +62,13 @@ Implementações externas são encapsuladas pelos wrappers das capabilities.
 
 Tasks sem dependência entre si são nós independentes e podem ser iniciadas em paralelo.
 
+Na V1, uma execução do artifact pode manter no máximo **4 tasks simultaneamente em execução**. Quando as quatro vagas estiverem ocupadas, novas tasks prontas aguardam a liberação de uma vaga.
+
 Uma task dependente só pode ser iniciada quando todos os predecessores necessários estiverem concluídos com sucesso.
 
 Quando houver múltiplos predecessores, o Input Binder monta o único JSON de entrada esperado pela próxima function.
 
-O mecanismo concreto de buffering ou materialização de resultados paralelos e o limite de concorrência ainda precisam ser refinados; o assembler não deve escolher esses detalhes por suposição.
+O mecanismo concreto de buffering ou materialização de resultados paralelos e a regra para escolher entre múltiplas tasks prontas ainda precisam ser refinados; o assembler não deve escolher esses detalhes por suposição.
 
 ## Restrições
 
@@ -80,7 +83,7 @@ O mecanismo concreto de buffering ou materialização de resultados paralelos e 
 
 A especificação não pode atingir `refined` até serem definidos:
 
-- limite e política de concorrência;
+- regra de seleção entre múltiplas tasks prontas quando houver mais candidatas do que vagas;
 - estratégia de buffering/materialização de outputs paralelos;
 - semântica completa de falhas em branches paralelos;
 - manifesto final de dependências do artifact.
@@ -89,6 +92,7 @@ A especificação não pode atingir `refined` até serem definidos:
 
 - conteúdo deriva somente do DAG e das functions validadas;
 - tasks independentes não são serializadas artificialmente;
+- nenhuma execução mantém mais de quatro tasks simultâneas;
 - fan-in não cria task funcional sem necessidade;
 - o assembler não contém lógica específica para APPLICATION, SCRIPT ou SERVICE;
 - gravação usa estratégia atômica;
