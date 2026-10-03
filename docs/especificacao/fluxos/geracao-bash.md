@@ -74,7 +74,7 @@ Quando combinar resultados possui significado funcional próprio, essa transform
 
 ## Falhas e tratamento
 
-Erros de normalização, busca, geração de function, contrato, versão, policy, validação ou filesystem interrompem a etapa correspondente.
+Erros de normalização, busca, geração de function, contrato, versão, validação ou filesystem interrompem a etapa correspondente.
 
 Falhas e cancelamento em branches paralelos ainda dependem da política operacional de concorrência a ser refinada.
 
@@ -86,8 +86,7 @@ Falhas e cancelamento em branches paralelos ainda dependem da política operacio
 
 O fluxo não pode atingir `refined` enquanto permanecerem abertos:
 
-- pinagem final de versão do catálogo;
-- isolamento e policy de functions;
+- isolamento de functions;
 - limites do gerador de capability;
 - política de concorrência, buffering e falha em branches paralelos;
 - contratos externos necessários ao retorno.
@@ -100,7 +99,8 @@ O fluxo não pode atingir `refined` enquanto permanecerem abertos:
 - dependências do DAG são preservadas;
 - tasks independentes não são serializadas artificialmente;
 - artifact só é materializado após validação válida;
-- publicação de capability e materialização permanecem independentes.
+- publicação de capability e materialização permanecem independentes;
+- a geração não concede privilégios de execução ao artifact.
 
 ## Implementação relacionada
 
