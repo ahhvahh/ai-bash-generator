@@ -25,13 +25,16 @@ A configuração documentada usa PostgreSQL local por Unix Domain Socket, banco 
 
 Responsável pela identidade lógica e referência da versão ativa.
 
-Campos estáveis já reconhecidos:
+Campos estáveis:
 
 - chave lógica única;
+- contrato lógico de entrada usado no matching;
+- contrato lógico de saída usado no matching;
+- propósito usado no matching;
 - enabled;
 - `active_version_id`.
 
-**BLOCKED:** ADR-0008 precisa decidir quais metadados pesquisáveis permanecem na identidade e quais pertencem à versão.
+Entrada, saída e propósito formam a identidade funcional usada pela busca na V1. A comparação é exata; não há matching parcial ou por similaridade.
 
 ### capability_version
 
@@ -86,17 +89,19 @@ Publicação usa `idempotency_key` e fingerprint. A persistência deve possuir g
 
 ## Busca
 
-Candidate retrieval pode usar intenção e PostgreSQL Full Text Search.
+A resolução normativa da V1 procura uma capability com igualdade exata em:
 
-A seleção precisa considerar:
+1. contrato lógico de input;
+2. propósito;
+3. contrato lógico de output.
 
-1. compatibilidade do input lógico;
-2. compatibilidade semântica com a instruction;
-3. compatibilidade do output lógico.
+Não há ranking, score, FTS semântico ou desempate por aproximação.
 
-FTS apenas localiza candidatos; compatibilidade é verificada fora do banco.
+Encontrada a identidade lógica, a busca retorna diretamente seu `active_version_id`, correspondente à versão ativa mais recente. O restante do pipeline usa esse `capability_version_id` sem resolver novamente a versão.
 
-**BLOCKED:** ranking, tie-break, canonicalização de fingerprint, migrations, `risk_level` tipado e posição final dos metadados versionáveis permanecem pendentes.
+Se não existir correspondência exata, a busca retorna ausência de solução catalogada.
+
+**BLOCKED:** canonicalização de fingerprint, migrations e `risk_level` tipado permanecem pendentes.
 
 ## Exclusão
 
@@ -106,7 +111,10 @@ A documentação anterior usava `ON DELETE CASCADE` entre capability e versões.
 
 - versões publicadas não são alteradas in-place;
 - uma capability não aponta para versão de outra identidade;
+- entrada, saída e propósito precisam coincidir exatamente para reutilização;
 - somente uma versão fica ativa por capability;
+- nova otimização de implementação cria nova versão da mesma identidade funcional;
+- a busca devolve o `capability_version_id` ativo e o detalhe usa o mesmo identificador;
 - a versão carregada contém contratos e wrapper suficientes para validação e composição;
 - uso referencia a versão efetivamente carregada;
 - conflito concorrente não cria duplicata equivalente.
