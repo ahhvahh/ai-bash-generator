@@ -7,17 +7,11 @@ Estado consolidado após a adoção de tasks estruturadas, ABI JSON e composiç�
 | ID | Escopo bloqueado | Estado atual | Estado necessário | Informação ou decisão ausente | Dependências afetadas |
 |---|---|---|---|---|---|
 | ADR-0011 | Functions geradas | `refinement` | `refined` | Definir análise estrutural, namespace, top-level proibido e colisões | MOD-0003, MOD-0004, FLW-0001 |
-| ADR-0012 | Segurança/policy | `refinement` | `refined` | Estruturar efeitos da capability e regra de autorização | DSG-0002, MOD-0004, CTR-0001 |
 | ADR-0013 | Geração de capability | `refinement` | `refined` | Definir orçamento, limites e número de turnos para gerar uma FUNCTION ausente | MOD-0003, FLW-0001, FLW-0004 |
 | ADR-0014 | Runtime de inferência | `refinement` | `refined` | Escolher modelo único na V1 ou lifecycle explícito de múltiplos modelos | DSG-0003, CTR-0003 |
 | ADR-0015 | API externa | `refinement` | `refined` | Definir envelopes, correlação, erros, cancelamento, framing e limites | DSG-0003, CTR-0004, FLW-0005 |
 
 ## BLOCKED — desenho
-
-- **DSG-0002 — Catálogo de capabilities**
-  - estado atual: `backlog`;
-  - estado necessário: `finalized`;
-  - bloqueador: ADR-0012.
 
 - **DSG-0003 — Runtime do daemon**
   - estado atual: `backlog`;
@@ -66,7 +60,11 @@ Estado consolidado após a adoção de tasks estruturadas, ABI JSON e composiç�
 - Capability Search usa matching exato de input, output e propósito;
 - ausência de correspondência exata encaminha a task para geração de nova FUNCTION;
 - a busca retorna o `capability_version_id` da versão ativa mais recente e o pipeline mantém essa pinagem;
-- melhorias de performance/implementação de uma mesma função são novas versões imutáveis da mesma capability.
+- melhorias de performance/implementação de uma mesma função são novas versões imutáveis da mesma capability;
+- autorização operacional pertence ao usuário/processo e ao ambiente que executam o `BashArtifact`;
+- o catálogo e a LLM não concedem privilégios;
+- aplicações externas somente podem ser usadas quando estiverem disponíveis e acessíveis ao executor;
+- DSG-0002 foi finalizado após o fechamento dessa fronteira de autorização.
 
 ## Critério para desenvolvimento
 
