@@ -18,6 +18,7 @@ Representar a estrutura do pipeline separando interpretação semântica, resolu
 - [ADR-0007 — Capabilities geradas](../adr/geracao/capabilities-geradas.md)
 - [ADR-0009 — Contrato lógico e stream](../adr/contratos/contrato-logico-e-stream.md)
 - [ADR-0010 — Binding por função](../adr/execucao/binding-invocacao.md)
+- [ADR-0016 — Limite de paralelismo do DAG](../adr/execucao/limite-paralelismo-dag.md)
 
 ## Nível C4
 
@@ -71,7 +72,7 @@ flowchart LR
 - Na fronteira com LLM, a representação permanece TextProto.
 - Entre functions do artifact, o payload funcional é JSON UTF-8.
 - Toda capability resolvida apresenta uma função Bash uniforme ao assembler, independentemente de sua implementation interna.
-- Tarefas independentes são representadas como nós independentes do DAG e podem ser organizadas para execução paralela.
+- Tarefas independentes são representadas como nós independentes do DAG e podem ser organizadas para execução paralela, com no máximo quatro tasks simultaneamente por execução do artifact.
 - Fan-in é resolvido por binding determinístico de inputs; não exige capability artificial de merge quando não existe transformação funcional.
 - Publicação de nova capability e materialização do artifact permanecem responsabilidades distintas.
 
@@ -81,4 +82,4 @@ flowchart LR
 - composição do script final não depende de LLM;
 - a fronteira entre functions possui ABI única;
 - paralelismo deriva do DAG e não de inferência;
-- decisões detalhadas ainda abertas de policy, limites de concorrência e lifecycle de modelos não alteram os componentes principais do desenho.
+- o limite de concorrência da V1 é quatro; detalhes ainda abertos de scheduling, buffering, falha/cancelamento e lifecycle de modelos não alteram os componentes principais do desenho.
