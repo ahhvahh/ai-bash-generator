@@ -100,13 +100,14 @@ Erros de controle devem ser estruturados e correlacionáveis. Erros das function
 - parsing estrutural deve ser seguido por validação semântica;
 - `request_id` interno é criado pela aplicação;
 - o normalizador não escolhe encoding da implementation;
-- capability existente usada precisa apontar para versão resolvida;
+- capability existente somente é reutilizada com igualdade exata de input, propósito e output;
+- capability existente usada precisa carregar o mesmo `capability_version_id` retornado pela busca;
 - conjunto resolvido deve permitir reconstruir deterministicamente o DAG e o artifact;
 - alterações incompatíveis no schema exigem estratégia de versão.
 
 ## BLOCKED
 
-A definição física final do schema ainda depende de ADR-0008 e da revisão do Protobuf para representar explicitamente os contratos lógicos sem duplicação desnecessária.
+A definição física final do schema ainda depende da revisão do Protobuf para representar explicitamente os contratos lógicos sem duplicação desnecessária e das demais dependências ainda não refinadas.
 
 ## Critérios de aceite
 
