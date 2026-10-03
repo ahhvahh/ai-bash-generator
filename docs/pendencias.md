@@ -6,7 +6,6 @@ Estado consolidado após a adoção de tasks estruturadas, ABI JSON e composiç�
 
 | ID | Escopo bloqueado | Estado atual | Estado necessário | Informação ou decisão ausente | Dependências afetadas |
 |---|---|---|---|---|---|
-| ADR-0011 | Functions geradas | `refinement` | `refined` | Definir análise estrutural, namespace, top-level proibido e colisões | MOD-0003, MOD-0004, FLW-0001 |
 | ADR-0013 | Geração de capability | `refinement` | `refined` | Definir orçamento, limites e número de turnos para gerar uma FUNCTION ausente | MOD-0003, FLW-0001, FLW-0004 |
 | ADR-0014 | Runtime de inferência | `refinement` | `refined` | Escolher modelo único na V1 ou lifecycle explícito de múltiplos modelos | DSG-0003, CTR-0003 |
 | ADR-0015 | API externa | `refinement` | `refined` | Definir envelopes, correlação, erros, cancelamento, framing e limites | DSG-0003, CTR-0004, FLW-0005 |
@@ -64,7 +63,10 @@ Estado consolidado após a adoção de tasks estruturadas, ABI JSON e composiç�
 - autorização operacional pertence ao usuário/processo e ao ambiente que executam o `BashArtifact`;
 - o catálogo e a LLM não concedem privilégios;
 - aplicações externas somente podem ser usadas quando estiverem disponíveis e acessíveis ao executor;
-- DSG-0002 foi finalizado após o fechamento dessa fronteira de autorização.
+- DSG-0002 foi finalizado após o fechamento dessa fronteira de autorização;
+- na V1, cada capability gerada contém uma única FUNCTION para processamento pontual;
+- helpers, globals, múltiplas functions e código executável top-level ficam proibidos na V1;
+- o nome da FUNCTION é controlado pela aplicação e a estrutura é validada antes da materialização.
 
 ## Critério para desenvolvimento
 
