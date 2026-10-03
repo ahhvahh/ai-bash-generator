@@ -26,10 +26,11 @@ A validação prevista inclui:
 3. compatibilidade de input e output;
 4. versões de capabilities;
 5. presença e estrutura dos wrappers Bash;
-6. composição determinística de preview;
-7. `bash -n`;
-8. ShellCheck;
-9. dependências externas declaradas.
+6. regra de uma única FUNCTION sem helpers, globals ou top-level executável para capabilities geradas;
+7. composição determinística de preview;
+8. `bash -n`;
+9. ShellCheck;
+10. dependências externas declaradas.
 
 ## Entradas
 
@@ -47,11 +48,14 @@ Resultado estruturado com `valid`, conjunto resolvido e issues.
 - nova capability produzida por LLM é FUNCTION;
 - uma saída não pode alimentar input estruturalmente incompatível;
 - routing e Input Binder não substituem transformação funcional;
+- FUNCTION gerada deve conter exatamente uma definição e nenhum helper, global ou comando top-level adicional;
+- o nome incorporado ao artifact deve ser controlado pela aplicação e não colidir;
+- a estrutura Bash deve ser validada sintaticamente, não apenas por regex;
 - ShellCheck indisponível deve resultar em falha explícita na política atual;
 - o Validator não concede permissões de execução;
 - permissões do artifact são responsabilidade do usuário/processo e ambiente de execução conforme ADR-0012.
 
-**BLOCKED:** isolamento de function ainda não está refinado. Taxonomia final de exit codes e detalhes operacionais de concorrência também permanecem pendentes.
+**BLOCKED:** taxonomia final de exit codes e detalhes operacionais de concorrência permanecem pendentes.
 
 ## Critérios de aceite
 
@@ -59,6 +63,7 @@ Resultado estruturado com `valid`, conjunto resolvido e issues.
 - contratos incompatíveis são rejeitados;
 - capability existente sem versão resolvida é rejeitada;
 - capability sem wrapper funcional válido é rejeitada;
+- FUNCTION gerada com helpers, globals, múltiplas functions ou top-level executável é rejeitada;
 - o Validator não trata metadados da capability como concessão de privilégios;
 - preview não contém composição decidida por inferência;
 - falha final de validação impede a criação do artifact.
