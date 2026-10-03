@@ -20,11 +20,11 @@ Esta é a raiz documental do projeto, organizada conforme o Architecture Documen
 - [ADR-0008 — Matching exato e pinagem de versão da capability](adr/catalogo/pinagem-versao-capability.md)
 - [ADR-0009 — Contrato lógico separado do transporte](adr/contratos/contrato-logico-e-stream.md)
 - [ADR-0010 — Binding por função de capability](adr/execucao/binding-invocacao.md)
+- [ADR-0012 — Controle de acesso pelo ambiente de execução](adr/seguranca/efeitos-capabilities.md)
 
 ### Em refinamento
 
 - [ADR-0011 — Isolamento de functions geradas](adr/execucao/isolamento-functions.md)
-- [ADR-0012 — Efeitos e autorização de capabilities](adr/seguranca/efeitos-capabilities.md)
 - [ADR-0013 — Sessão e orçamento do gerador de capability](adr/runtime/sessao-gerador.md)
 - [ADR-0014 — Lifecycle de modelos](adr/runtime/lifecycle-modelos.md)
 - [ADR-0015 — Protocolo externo do daemon](adr/api/protocolo-daemon.md)
@@ -32,7 +32,7 @@ Esta é a raiz documental do projeto, organizada conforme o Architecture Documen
 ## Desenhos
 
 - [DSG-0001 — Pipeline de geração](desenho/pipeline-geracao.md) — `finalized`
-- [DSG-0002 — Catálogo de capabilities](desenho/catalogo-capabilities.md) — `backlog`
+- [DSG-0002 — Catálogo de capabilities](desenho/catalogo-capabilities.md) — `finalized`
 - [DSG-0003 — Runtime do daemon](desenho/runtime-daemon.md) — `backlog`
 
 ## Especificações
@@ -88,6 +88,8 @@ O plano de controle permanece Protobuf/TextProto. O payload funcional entre func
 Tasks independentes permanecem independentes no DAG; paralelismo não é decidido pela LLM.
 
 Capability Search reutiliza somente funções cujo contrato de entrada, contrato de saída e propósito coincidam exatamente. A versão ativa mais recente é retornada por `capability_version_id` e permanece pinada durante a requisição. Refatorações de performance criam novas versões imutáveis da mesma capability.
+
+A autorização da execução pertence ao usuário/processo e ao ambiente que executam o `BashArtifact`. Catálogo, LLM e assembler não concedem privilégios; aplicações externas somente podem ser utilizadas quando estiverem disponíveis e acessíveis ao executor.
 
 ## Pendências
 
