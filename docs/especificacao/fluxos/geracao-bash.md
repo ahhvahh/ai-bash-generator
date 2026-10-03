@@ -18,6 +18,7 @@ Descrever o fluxo desde a solicitação humana até um `BashArtifact` composto d
 - [CTR-0001 — Protobuf do pipeline](../contratos/pipeline-protobuf.md)
 - [CTR-0005 — ABI JSON de functions](../contratos/function-json.md)
 - [ADR-0013 — Sessão do gerador](../../adr/runtime/sessao-gerador.md)
+- [ADR-0016 — Limite de paralelismo do DAG](../../adr/execucao/limite-paralelismo-dag.md)
 
 ## Gatilho
 
@@ -40,7 +41,7 @@ Solicitação aceita pelo serviço para geração de um artifact Bash.
 7. O Validator valida DAG, contratos, versões, wrappers e functions geradas.
 8. Com o conjunto resolvido válido, o Bash Output monta deterministicamente o script.
 9. O assembler incorpora as functions e gera a função central de execução conforme o DAG.
-10. Tasks independentes podem ser representadas para execução paralela; tasks dependentes aguardam seus predecessores.
+10. Tasks independentes podem ser representadas para execução paralela, respeitando o limite máximo de quatro tasks simultâneas por execução; tasks dependentes aguardam seus predecessores.
 11. Em fan-in, o Input Binder monta o objeto JSON da próxima function a partir dos resultados necessários.
 12. O artifact é validado sintaticamente e materializado.
 13. Nova FUNCTION aprovada para publicação segue o fluxo próprio de publicação, independente da materialização.
@@ -66,6 +67,8 @@ Na V1, a geração produz uma única FUNCTION pontual para a task, sem helpers, 
 
 Nós sem dependência entre si permanecem independentes no DAG. O assembler não cria dependências apenas para linearizar o script.
 
+A execução materializada respeita no máximo quatro tasks simultâneas. Se todas as vagas estiverem ocupadas, novas tasks prontas aguardam uma vaga.
+
 ### Fan-in estrutural
 
 Múltiplos resultados necessários por uma task são ligados pelo Input Binder. Isso não cria uma task nova.
@@ -89,7 +92,7 @@ Falhas e cancelamento em branches paralelos ainda dependem da política operacio
 O fluxo não pode atingir `refined` enquanto permanecerem abertos:
 
 - limites do gerador de capability;
-- política de concorrência, buffering e falha em branches paralelos;
+- regra de seleção de tasks prontas, buffering e falha em branches paralelos;
 - contratos externos necessários ao retorno.
 
 ## Critérios de aceite
@@ -99,6 +102,7 @@ O fluxo não pode atingir `refined` enquanto permanecerem abertos:
 - toda capability chega ao assembler como function com ABI uniforme;
 - dependências do DAG são preservadas;
 - tasks independentes não são serializadas artificialmente;
+- a execução não ultrapassa quatro tasks simultâneas;
 - artifact só é materializado após validação válida;
 - publicação de capability e materialização permanecem independentes;
 - a geração não concede privilégios de execução ao artifact.
