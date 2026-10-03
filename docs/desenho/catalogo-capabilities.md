@@ -1,7 +1,7 @@
 # Catálogo de capabilities
 
 ![DSG](https://img.shields.io/badge/DSG-DSG--0002-0550ae?style=flat-square)
-![Status](https://img.shields.io/badge/Status-backlog-6e7781?style=flat-square)
+![Status](https://img.shields.io/badge/Status-finalized-0a7ea4?style=flat-square)
 
 ## Objetivo
 
@@ -13,7 +13,7 @@ Representar busca, versionamento, contratos lógicos, wrappers funcionais, lifec
 - [ADR-0008 — Identidade e pinagem de versão](../adr/catalogo/pinagem-versao-capability.md)
 - [ADR-0009 — Contrato lógico e stream](../adr/contratos/contrato-logico-e-stream.md)
 - [ADR-0010 — Binding por função](../adr/execucao/binding-invocacao.md)
-- [ADR-0012 — Efeitos e autorização](../adr/seguranca/efeitos-capabilities.md)
+- [ADR-0012 — Controle de acesso pelo ambiente](../adr/seguranca/efeitos-capabilities.md)
 
 ## Nível C4
 
@@ -21,43 +21,66 @@ Representar busca, versionamento, contratos lógicos, wrappers funcionais, lifec
 
 ## Diagrama
 
-BLOCKED. O desenho final não deve congelar a posição dos metadados pesquisáveis nem o contrato de autorização antes dos ADRs dependentes serem refinados.
+```mermaid
+flowchart LR
+    T[NormalizedTask] --> S[Capability Search]
+    S --> C[Capability]
+    C --> V[active_version_id]
+    V --> CV[Capability Version]
+    CV --> W[Wrapper Bash]
+    W --> A[Assembler]
+```
 
 ## Elementos e responsabilidades
 
-Já são estáveis:
+### Capability
 
-- identidade lógica da capability;
-- versões imutáveis;
-- versão ativa única;
-- input e output contracts lógicos;
-- descrição funcional usada para localizar candidatos;
-- wrapper Bash uniforme por versão para composição no artifact;
-- telemetria por versão;
-- publicação idempotente.
+Mantém a identidade lógica usada para localizar uma função por:
 
-Já definidos pelo ADR-0008:
+- contrato de entrada;
+- contrato de saída;
+- propósito;
+- versão ativa.
 
-- matching exato por contrato de entrada, contrato de saída e propósito;
-- `capability_version_id` como pinagem entre search e detail;
-- versões imutáveis para evolução de implementação;
-- ausência de ranking por similaridade na V1.
+### Capability Version
 
-Ainda estão em decisão:
+Mantém uma versão imutável da implementação, incluindo contratos, wrapper e dependências necessárias para reproduzir a solução.
 
-- efeitos estruturados usados por policy.
+Uma melhoria de implementação ou performance que preserve entrada, saída e propósito cria uma nova versão da mesma capability.
+
+### Capability Search
+
+Usa matching exato de entrada, saída e propósito e retorna o `capability_version_id` ativo.
+
+Não existe ranking por similaridade na V1.
+
+### Wrapper funcional
+
+Cada versão resolvida apresenta ao assembler uma função Bash uniforme, independentemente de a implementação real ser FUNCTION, SCRIPT, APPLICATION ou SERVICE.
+
+### Autorização de execução
+
+O catálogo não concede privilégios e não decide autorização por efeitos da capability.
+
+As permissões efetivas pertencem ao usuário/processo e ao ambiente que futuramente executarem o `BashArtifact`, conforme ADR-0012.
+
+A declaração e disponibilidade de dependências externas permanecem responsabilidades de runtime e das especificações correspondentes.
 
 ## Relações relevantes
 
-Capability Search avalia input, instruction e output da task contra as versões elegíveis.
+A busca só considera correspondência exata de entrada, saída e propósito.
 
-A busca só considera correspondência exata de entrada, saída e propósito. O detalhe consumido pelo pipeline é carregado diretamente pelo `capability_version_id` retornado pela busca.
+A definição completa é carregada diretamente pelo `capability_version_id` retornado pela busca, evitando nova resolução da versão.
 
-Depois de resolvida, a implementation concreta fica atrás do wrapper funcional; o assembler não diferencia FUNCTION, SCRIPT, APPLICATION ou SERVICE.
+O assembler recebe wrappers funcionais e não precisa conhecer detalhes específicos da implementação concreta.
 
-## Critérios para finalização
+## Critérios de finalização
 
-- ADR-0008 em `refined`;
-- ADR-0012 em `refined`;
-- definição inequívoca de policy metadata;
-- persistência do wrapper e dos contratos suficientemente especificada.
+- ADR-0004 refinado;
+- ADR-0008 refinado;
+- ADR-0009 refinado;
+- ADR-0010 refinado;
+- ADR-0012 refinado;
+- identidade, versão, busca e fronteira de autorização definidos.
+
+Os critérios acima estão satisfeitos para o escopo deste desenho.
