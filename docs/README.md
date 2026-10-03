@@ -17,12 +17,12 @@ Esta é a raiz documental do projeto, organizada conforme o Architecture Documen
 - [ADR-0005 — Orquestração e autorização de MCPs](adr/integracoes/orquestracao-mcp.md)
 - [ADR-0006 — Publicação e materialização independentes](adr/pipeline/publicacao-materializacao.md)
 - [ADR-0007 — Capabilities geradas como FUNCTION](adr/geracao/capabilities-geradas.md)
+- [ADR-0008 — Matching exato e pinagem de versão da capability](adr/catalogo/pinagem-versao-capability.md)
 - [ADR-0009 — Contrato lógico separado do transporte](adr/contratos/contrato-logico-e-stream.md)
 - [ADR-0010 — Binding por função de capability](adr/execucao/binding-invocacao.md)
 
 ### Em refinamento
 
-- [ADR-0008 — Identidade e pinagem de versão da capability](adr/catalogo/pinagem-versao-capability.md)
 - [ADR-0011 — Isolamento de functions geradas](adr/execucao/isolamento-functions.md)
 - [ADR-0012 — Efeitos e autorização de capabilities](adr/seguranca/efeitos-capabilities.md)
 - [ADR-0013 — Sessão e orçamento do gerador de capability](adr/runtime/sessao-gerador.md)
@@ -86,6 +86,8 @@ O fluxo-alvo é:
 O plano de controle permanece Protobuf/TextProto. O payload funcional entre functions no artifact é JSON UTF-8.
 
 Tasks independentes permanecem independentes no DAG; paralelismo não é decidido pela LLM.
+
+Capability Search reutiliza somente funções cujo contrato de entrada, contrato de saída e propósito coincidam exatamente. A versão ativa mais recente é retornada por `capability_version_id` e permanece pinada durante a requisição. Refatorações de performance criam novas versões imutáveis da mesma capability.
 
 ## Pendências
 
