@@ -1,51 +1,96 @@
-# Isolamento de símbolos em functions geradas
+# Isolamento de functions geradas
 
 ![ADR](https://img.shields.io/badge/ADR-ADR--0011-7a3e9d?style=flat-square)
-![Status](https://img.shields.io/badge/Status-refinement-d4a72c?style=flat-square)
-![Version](https://img.shields.io/badge/Version----6e7781?style=flat-square)
+![Status](https://img.shields.io/badge/Status-refined-0969da?style=flat-square)
+![Version](https://img.shields.io/badge/Version-1-6e7781?style=flat-square)
 
 ## Contexto
 
-O artifact pode incorporar múltiplas functions e helpers.
+Na V1, as capabilities geradas serão usadas para processamentos pontuais de sistema.
+
+Exemplos de escopo inicial:
+
+- executar um comando;
+- listar ou consultar diretórios;
+- contar arquivos;
+- consultar uso de CPU;
+- consultar uso de memória;
+- consultar armazenamento;
+- consultar informações de rede;
+- executar aplicações pontuais disponíveis no ambiente.
+
+Comandos e funções mais elaborados podem ser adicionados futuramente conforme o projeto evoluir.
 
 ## Problema
 
-Símbolos podem colidir e código top-level pode executar quando a definição é incorporada.
+O artifact pode incorporar várias functions. Se uma capability puder declarar helpers, globals ou código executável fora da function principal, símbolos podem colidir e carregar uma definição pode produzir efeitos inesperados.
+
+Para o escopo simples da V1, essa complexidade não é necessária.
 
 ## Restrições
 
-- Código gerado não pode produzir efeitos ao ser carregado.
-- Regex isolada não é suficiente para análise segura de Bash.
-
-## Opções consideradas
-
-### Aceitar source livre
-
-Permite colisão e execução top-level.
-
-### Restringir estrutura e aplicar namespace
-
-Permite somente definições, identifica símbolos e prefixa ou rejeita colisões.
+- cada capability gerada representa uma única operação pontual;
+- cada capability gerada contém exatamente uma FUNCTION;
+- não são permitidas functions auxiliares geradas;
+- não são permitidas variáveis globais geradas;
+- não é permitido código executável no top-level;
+- o corpo da FUNCTION pode executar os comandos necessários à operação;
+- a FUNCTION continua obedecendo à ABI JSON por stdin/stdout;
+- a execução respeita as permissões do usuário/processo e do ambiente conforme ADR-0012.
 
 ## Decisão
 
-Em refinamento. A política de namespace e a técnica de análise estrutural ainda não foram fechadas.
+Na V1, uma capability gerada possui **uma única FUNCTION Bash isolada**.
+
+O nome da FUNCTION é atribuído e controlado pela aplicação, não pela LLM. O conjunto materializado deve possuir nomes únicos para todas as functions incorporadas.
+
+A saída do gerador deve conter somente a definição dessa FUNCTION.
+
+São proibidos:
+
+- helpers adicionais;
+- globals;
+- aliases;
+- comandos executáveis fora da FUNCTION;
+- inicialização top-level;
+- múltiplas definições de function no mesmo source.
+
+O Validator realiza validação estrutural do source Bash antes da materialização. A validação precisa identificar a estrutura sintática; regex isolada não é considerada suficiente.
+
+A escolha da biblioteca/parser concreto é detalhe de implementação desde que permita verificar deterministicamente as regras acima.
+
+## Evolução futura
+
+Quando o projeto precisar de capabilities mais elaboradas, este ADR pode ser reaberto para permitir helpers, namespaces compostos ou outras estruturas.
+
+Essa evolução não deve ampliar implicitamente a V1.
 
 ## Justificativa
 
-A proposta é namespace por capability/version e validação estrutural antes da materialização.
+O escopo atual não precisa de um sistema complexo de namespaces ou reescrita de símbolos.
+
+Restringir cada capability a uma única FUNCTION elimina a principal fonte de colisões e mantém a validação objetiva.
 
 ## Consequências
 
-A validação de FUNCTION permanece incompleta.
+- o gerador produz somente uma definição de function por capability;
+- o nome é controlado pela aplicação;
+- helpers e globals ficam fora da V1;
+- o Validator rejeita sources com estruturas adicionais;
+- o assembler incorpora functions já isoladas e identificadas;
+- operações mais complexas exigirão nova decisão ou refinamento desta regra.
 
 ## Dependências
 
 - [ADR-0007](../geracao/capabilities-geradas.md)
+- [ADR-0012](../seguranca/efeitos-capabilities.md)
 
 ## Critérios de validação
 
-- Proibir comandos top-level.
-- Definir namespace canônico.
-- Definir tratamento de globals e helpers.
-- Definir analisador aceito na V1.
+- existe exatamente uma definição de FUNCTION;
+- não existe comando executável no top-level;
+- não existem helpers adicionais;
+- não existem globals;
+- o nome usado no artifact é controlado pela aplicação e não colide com outra function;
+- o source é sintaticamente válido em Bash;
+- a estrutura é verificada por análise sintática adequada, não somente por regex.
