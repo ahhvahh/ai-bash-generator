@@ -51,12 +51,14 @@ A versão precisa preservar informação suficiente para reproduzir a solução 
 - tipo e definição da implementation;
 - wrapper Bash compatível com a ABI JSON, ou referência imutável suficiente para obtê-lo;
 - dependências;
-- risco/complexidade;
+- risco/complexidade, quando mantido como metadado descritivo;
 - checksum;
 - fingerprint;
 - criação.
 
 O wrapper é a interface utilizada pelo assembler. APPLICATION, SCRIPT e SERVICE permanecem tipos internos da implementation e não alteram a ABI exposta.
+
+Metadados de risco não concedem nem restringem privilégios na V1. A autorização efetiva pertence ao ambiente e ao usuário/processo que executa o artifact, conforme ADR-0012.
 
 Deve existir unicidade por `capability_id + version` e no máximo uma versão ativa por capability.
 
