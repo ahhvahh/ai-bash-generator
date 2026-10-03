@@ -20,11 +20,11 @@ Esta é a raiz documental do projeto, organizada conforme o Architecture Documen
 - [ADR-0008 — Matching exato e pinagem de versão da capability](adr/catalogo/pinagem-versao-capability.md)
 - [ADR-0009 — Contrato lógico separado do transporte](adr/contratos/contrato-logico-e-stream.md)
 - [ADR-0010 — Binding por função de capability](adr/execucao/binding-invocacao.md)
+- [ADR-0011 — Isolamento de functions geradas](adr/execucao/isolamento-functions.md)
 - [ADR-0012 — Controle de acesso pelo ambiente de execução](adr/seguranca/efeitos-capabilities.md)
 
 ### Em refinamento
 
-- [ADR-0011 — Isolamento de functions geradas](adr/execucao/isolamento-functions.md)
 - [ADR-0013 — Sessão e orçamento do gerador de capability](adr/runtime/sessao-gerador.md)
 - [ADR-0014 — Lifecycle de modelos](adr/runtime/lifecycle-modelos.md)
 - [ADR-0015 — Protocolo externo do daemon](adr/api/protocolo-daemon.md)
@@ -90,6 +90,8 @@ Tasks independentes permanecem independentes no DAG; paralelismo não é decidid
 Capability Search reutiliza somente funções cujo contrato de entrada, contrato de saída e propósito coincidam exatamente. A versão ativa mais recente é retornada por `capability_version_id` e permanece pinada durante a requisição. Refatorações de performance criam novas versões imutáveis da mesma capability.
 
 A autorização da execução pertence ao usuário/processo e ao ambiente que executam o `BashArtifact`. Catálogo, LLM e assembler não concedem privilégios; aplicações externas somente podem ser utilizadas quando estiverem disponíveis e acessíveis ao executor.
+
+Na V1, capabilities geradas são funções pontuais: exatamente uma FUNCTION por capability, sem helpers, globals ou execução top-level. O escopo inicial cobre operações simples de sistema, como comandos, diretórios, contagem de arquivos e consulta de CPU, memória, armazenamento e rede.
 
 ## Pendências
 
