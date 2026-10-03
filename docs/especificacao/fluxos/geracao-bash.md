@@ -60,6 +60,8 @@ Nenhuma segunda inferência é necessária. O pipeline segue da resolução para
 
 Somente a task sem solução é enviada ao Capability Function Generator.
 
+Na V1, a geração produz uma única FUNCTION pontual para a task, sem helpers, globals ou código top-level adicional. Operações mais elaboradas ficam fora deste escopo inicial.
+
 ### Tasks independentes
 
 Nós sem dependência entre si permanecem independentes no DAG. O assembler não cria dependências apenas para linearizar o script.
@@ -86,7 +88,6 @@ Falhas e cancelamento em branches paralelos ainda dependem da política operacio
 
 O fluxo não pode atingir `refined` enquanto permanecerem abertos:
 
-- isolamento de functions;
 - limites do gerador de capability;
 - política de concorrência, buffering e falha em branches paralelos;
 - contratos externos necessários ao retorno.
