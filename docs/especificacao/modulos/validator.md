@@ -13,7 +13,7 @@ Validar deterministicamente o DAG de tasks, capabilities resolvidas e functions 
 - [ADR-0003 — ABI JSON](../../adr/execucao/abi-stdout-stdin.md)
 - [ADR-0010 — Binding por função](../../adr/execucao/binding-invocacao.md)
 - [ADR-0011 — Isolamento de functions](../../adr/execucao/isolamento-functions.md)
-- [ADR-0012 — Efeitos](../../adr/seguranca/efeitos-capabilities.md)
+- [ADR-0012 — Controle de acesso pelo ambiente](../../adr/seguranca/efeitos-capabilities.md)
 - [CTR-0001 — Protobuf](../contratos/pipeline-protobuf.md)
 - [CTR-0005 — ABI JSON de functions](../contratos/function-json.md)
 
@@ -26,11 +26,10 @@ A validação prevista inclui:
 3. compatibilidade de input e output;
 4. versões de capabilities;
 5. presença e estrutura dos wrappers Bash;
-6. policy;
-7. composição determinística de preview;
-8. `bash -n`;
-9. ShellCheck;
-10. dependências externas declaradas.
+6. composição determinística de preview;
+7. `bash -n`;
+8. ShellCheck;
+9. dependências externas declaradas.
 
 ## Entradas
 
@@ -48,9 +47,11 @@ Resultado estruturado com `valid`, conjunto resolvido e issues.
 - nova capability produzida por LLM é FUNCTION;
 - uma saída não pode alimentar input estruturalmente incompatível;
 - routing e Input Binder não substituem transformação funcional;
-- ShellCheck indisponível deve resultar em falha explícita na política atual.
+- ShellCheck indisponível deve resultar em falha explícita na política atual;
+- o Validator não concede permissões de execução;
+- permissões do artifact são responsabilidade do usuário/processo e ambiente de execução conforme ADR-0012.
 
-**BLOCKED:** isolamento de function e efeitos ainda não estão refinados. Taxonomia final de exit codes e detalhes operacionais de concorrência também permanecem pendentes.
+**BLOCKED:** isolamento de function ainda não está refinado. Taxonomia final de exit codes e detalhes operacionais de concorrência também permanecem pendentes.
 
 ## Critérios de aceite
 
@@ -58,7 +59,7 @@ Resultado estruturado com `valid`, conjunto resolvido e issues.
 - contratos incompatíveis são rejeitados;
 - capability existente sem versão resolvida é rejeitada;
 - capability sem wrapper funcional válido é rejeitada;
-- policy é aplicada fora do LLM;
+- o Validator não trata metadados da capability como concessão de privilégios;
 - preview não contém composição decidida por inferência;
 - falha final de validação impede a criação do artifact.
 
