@@ -36,18 +36,22 @@ Já são estáveis:
 - telemetria por versão;
 - publicação idempotente.
 
+Já definidos pelo ADR-0008:
+
+- matching exato por contrato de entrada, contrato de saída e propósito;
+- `capability_version_id` como pinagem entre search e detail;
+- versões imutáveis para evolução de implementação;
+- ausência de ranking por similaridade na V1.
+
 Ainda estão em decisão:
 
-- campos estáveis versus versionados;
-- pinagem entre search e detail;
-- efeitos estruturados usados por policy;
-- ranking e desempate da busca.
+- efeitos estruturados usados por policy.
 
 ## Relações relevantes
 
 Capability Search avalia input, instruction e output da task contra as versões elegíveis.
 
-O detalhe consumido pelo pipeline precisa corresponder exatamente à versão avaliada no pruning.
+A busca só considera correspondência exata de entrada, saída e propósito. O detalhe consumido pelo pipeline é carregado diretamente pelo `capability_version_id` retornado pela busca.
 
 Depois de resolvida, a implementation concreta fica atrás do wrapper funcional; o assembler não diferencia FUNCTION, SCRIPT, APPLICATION ou SERVICE.
 
@@ -55,5 +59,5 @@ Depois de resolvida, a implementation concreta fica atrás do wrapper funcional;
 
 - ADR-0008 em `refined`;
 - ADR-0012 em `refined`;
-- definição inequívoca de identidade, versão, search candidate e policy metadata;
+- definição inequívoca de policy metadata;
 - persistência do wrapper e dos contratos suficientemente especificada.
