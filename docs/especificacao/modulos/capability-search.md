@@ -1,7 +1,7 @@
 # Capability Search
 
 ![MOD](https://img.shields.io/badge/MOD-MOD--0002-1f883d?style=flat-square)
-![Status](https://img.shields.io/badge/Status-backlog-6e7781?style=flat-square)
+![Status](https://img.shields.io/badge/Status-refinement-d4a72c?style=flat-square)
 
 ## Objetivo
 
@@ -19,7 +19,7 @@ Localizar capabilities ativas capazes de resolver cada `NormalizedTask`, sem usa
 
 - localizar capability por correspondência exata de propósito, contrato de input e contrato de output;
 - rejeitar qualquer diferença entre os três elementos;
-- podar candidatos por lifecycle e policy;
+- considerar somente identities habilitadas e versões ativas;
 - retornar a versão ativa mais recente da capability encontrada por `capability_version_id`;
 - permitir zero candidatos como resultado válido;
 - evitar LLM no processo normal de busca e pruning.
@@ -49,7 +49,7 @@ A definição completa é carregada posteriormente diretamente por esse identifi
 - O tipo interno de implementation não altera a interface apresentada ao assembler.
 - Ausência de correspondência exata é resultado válido e encaminha a task para geração de nova FUNCTION.
 
-**BLOCKED:** DSG-0002 ainda não está `finalized`.
+O gate de desenho está liberado por DSG-0002 em `finalized`. A especificação permanece em `refinement` até que seus contratos e dependências documentais associados estejam suficientemente definidos.
 
 ## Critérios de aceite
 
