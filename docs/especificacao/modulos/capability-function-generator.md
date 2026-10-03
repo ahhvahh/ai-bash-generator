@@ -41,24 +41,27 @@ O gerador não precisa receber o conjunto completo de functions já resolvidas a
 
 Definição de uma nova capability FUNCTION candidata, incluindo fonte Bash da função e contratos necessários para validação.
 
-O nome final, namespace e regras estruturais da função seguem ADR-0011 e contratos associados.
+O nome final é controlado pela aplicação conforme ADR-0011. A saída contém exatamente uma FUNCTION, sem helpers, globals ou código top-level adicional.
 
 ## Restrições
 
 - nunca retorna script completo;
 - nunca retorna APPLICATION, SCRIPT ou SERVICE novos;
+- gera somente uma FUNCTION por capability;
+- não gera helpers adicionais, globals ou comandos top-level;
 - não executa a function;
 - não ativa automaticamente a capability;
 - stdout funcional da function gerada deve obedecer ao CTR-0005.
 
 ## BLOCKED
 
-ADR-0011 e ADR-0013 ainda precisam ser refinados antes desta especificação atingir `refined`.
+ADR-0013 ainda precisa ser refinado antes desta especificação atingir `refined`.
 
 ## Critérios de aceite
 
 - uma task já resolvida pelo catálogo não chama este módulo;
 - a saída representa somente uma FUNCTION candidata;
+- o source contém exatamente uma definição de function;
 - a function aceita o objeto de input esperado e produz o objeto de output esperado;
 - nenhuma lógica de montagem do DAG é delegada à LLM;
 - a saída pode ser validada antes de publicação ou uso.
