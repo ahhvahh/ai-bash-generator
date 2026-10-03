@@ -22,6 +22,7 @@ Esta é a raiz documental do projeto, organizada conforme o Architecture Documen
 - [ADR-0010 — Binding por função de capability](adr/execucao/binding-invocacao.md)
 - [ADR-0011 — Isolamento de functions geradas](adr/execucao/isolamento-functions.md)
 - [ADR-0012 — Controle de acesso pelo ambiente de execução](adr/seguranca/efeitos-capabilities.md)
+- [ADR-0016 — Limite de paralelismo do DAG na V1](adr/execucao/limite-paralelismo-dag.md)
 
 ### Em refinamento
 
@@ -85,7 +86,7 @@ O fluxo-alvo é:
 
 O plano de controle permanece Protobuf/TextProto. O payload funcional entre functions no artifact é JSON UTF-8.
 
-Tasks independentes permanecem independentes no DAG; paralelismo não é decidido pela LLM.
+Tasks independentes permanecem independentes no DAG; paralelismo não é decidido pela LLM. Na V1, cada execução do artifact pode manter no máximo quatro tasks simultaneamente em execução.
 
 Capability Search reutiliza somente funções cujo contrato de entrada, contrato de saída e propósito coincidam exatamente. A versão ativa mais recente é retornada por `capability_version_id` e permanece pinada durante a requisição. Refatorações de performance criam novas versões imutáveis da mesma capability.
 
