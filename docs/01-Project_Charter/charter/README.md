@@ -50,3 +50,7 @@ Os registros seguintes recuperam decisões e pendências da documentação legad
 ## Critério de refinamento
 
 Promover apenas após validar propósito, stakeholders, resultados, limites, premissas e referências, deixando todas as questões bloqueadoras resolvidas e os documentos necessários em `refined` ou `implemented`.
+
+## Gate Charter → Scope
+
+**BLOCKED.** OPEN-001 permanece pendente. As novas questões bloqueadoras registram divergências ou decisões do propósito ainda a confirmar. Questões estritamente técnicas são encaminhadas para Scope/Implementation e não definem detalhes técnicos no Charter.
