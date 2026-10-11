@@ -6,11 +6,17 @@
 
 Quem autoriza uma nova capacidade a ficar disponível para reutilização e sob quais evidências e condições de reversão?
 
-## Contexto e evidência histórica
+## Contexto para refinamento
 
-ADR-0007 indica publicação inicial sem ativação automática; fluxo de publicação e catálogo descrevem candidates, ativação e bloqueio, mas pendências administrativas persistem.
+Uma capacidade produzida pelo sistema pode existir como candidata sem estar imediatamente disponível a outros pedidos. Foi considerada uma etapa de aprovação ou ativação para evitar reutilizar soluções ainda não verificadas, com possibilidade de bloqueio ou substituição de versões. Permanecem em aberto os responsáveis e os critérios para cada transição.
 
-A decisão ou proposta no documento de origem está classificada como **DOCUMENTED**; a revalidação aqui é **PROPOSED**, sem comprovação adicional de implementação. A criação desta questão não revoga automaticamente uma decisão vigente.
+O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+
+## Pontos para deliberação
+
+- Quais evidências tornam uma capacidade segura e apta à reutilização?
+- Quem pode ativar, suspender ou substituir uma capacidade no ambiente local?
+- Que histórico de mudanças e uso precisa ser preservado para auditoria?
 
 ## Impacto
 
@@ -24,13 +30,9 @@ Sim — ativação de capacidade automática afeta a fronteira de segurança do 
 
 Definir política de aprovação em alto nível e se a ativação pode ser automática; encaminhar operações de administração ao Scope.
 
-## Relações de Charter
+## Relações internas de Charter
 
-[PCH-001 — Propósito do projeto](../PCH-001.md). Quando aplicável, revisar os documentos canônicos já existentes antes de criar objetivos, restrições ou premissas adicionais.
-
-## Fontes para refinamento
-
-- [docs/adr/geracao/capabilities-geradas.md](../../../adr/geracao/capabilities-geradas.md)
-- [docs/especificacao/fluxos/publicacao-capability.md](../../../especificacao/fluxos/publicacao-capability.md)
-- [docs/especificacao/persistencia/catalogo-capabilities.md](../../../especificacao/persistencia/catalogo-capabilities.md)
-- [docs/pendencias.md](../../../pendencias.md)
+- [PCH-001](../PCH-001.md)
+- [OBJ-002](../objectives/OBJ-002.md)
+- [NOBJ-001](../non-objectives/NOBJ-001.md)
+- [OPEN-005](OPEN-005.md)

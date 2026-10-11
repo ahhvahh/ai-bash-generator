@@ -6,11 +6,17 @@
 
 A igualdade exata de propósito, entrada e saída e a manutenção da mesma versão durante a solicitação continuam sendo os requisitos da V1?
 
-## Contexto e evidência histórica
+## Contexto para refinamento
 
-ADR-0008 e o módulo de busca documentam matching exato e pinagem. A decisão já aparece em OBJ-002 e OPEN-001; este registro pede revisão, não cria uma decisão paralela.
+O objetivo vigente de reutilização exige que propósito, entrada lógica e saída lógica sejam compatíveis, evitando que proximidade textual seja confundida com equivalência. Foi considerada a regra inicial de igualdade exata e a manutenção de uma versão estável durante a solicitação. É necessário reconsiderar se essa exigência atende os casos reais sem impedir reutilizações legítimas.
 
-A decisão ou proposta no documento de origem está classificada como **DOCUMENTED**; a revalidação aqui é **PROPOSED**, sem comprovação adicional de implementação. A criação desta questão não revoga automaticamente uma decisão vigente.
+O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+
+## Pontos para deliberação
+
+- Igualdade exata continua sendo o critério adequado para todos os casos iniciais?
+- Como demonstrar que uma capacidade equivalente foi reutilizada e uma incompatível foi recusada?
+- Quais informações e resultados de testes são suficientes para aprovar esse compromisso?
 
 ## Impacto
 
@@ -24,11 +30,8 @@ Sim — qualquer alteração exigiria revisão formal de OBJ-002.
 
 Confirmar ou revisar explicitamente OBJ-002 e tratar em OPEN-001 apenas as métricas que ainda faltam.
 
-## Relações de Charter
+## Relações internas de Charter
 
-[PCH-001 — Propósito do projeto](../PCH-001.md). Quando aplicável, revisar os documentos canônicos já existentes antes de criar objetivos, restrições ou premissas adicionais.
-
-## Fontes para refinamento
-
-- [docs/adr/catalogo/pinagem-versao-capability.md](../../../adr/catalogo/pinagem-versao-capability.md)
-- [docs/especificacao/modulos/capability-search.md](../../../especificacao/modulos/capability-search.md)
+- [PCH-001](../PCH-001.md)
+- [OBJ-002](../objectives/OBJ-002.md)
+- [OPEN-001](OPEN-001.md)

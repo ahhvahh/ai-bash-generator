@@ -6,11 +6,17 @@
 
 Em que momento o artefato gerado é executado automaticamente, e quais condições devem obrigatoriamente preceder essa execução?
 
-## Contexto e evidência histórica
+## Contexto para refinamento
 
-PCH-001 e NOBJ-001 atuais incluem execução automática pela conta de serviço. O README principal e o ADR-0015 negam execução automática, enquanto ADR-0001 e ADR-0012 descrevem a separação entre geração e execução. Esta Open Question deve conciliar o acionamento automático com as fronteiras de cada etapa, sem apagar o histórico.
+A intenção vigente do Charter inclui executar automaticamente scripts gerados no próprio sistema operacional por uma conta de serviço dedicada, limitada às permissões configuradas pelo administrador. Em interpretações anteriores, geração e execução eram atividades separadas, sem acionamento automático. O projeto precisa confirmar a sequência funcional, o instante de execução e as validações obrigatórias antes de efetivar o comportamento atual.
 
-A decisão ou proposta no documento de origem está classificada como **DOCUMENTED**; a revalidação aqui é **PROPOSED**, sem comprovação adicional de implementação. A criação desta questão não revoga automaticamente uma decisão vigente.
+O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+
+## Pontos para deliberação
+
+- Qual evento autoriza ou dispara a execução depois da geração?
+- Quais condições de validação, disponibilidade e segurança são pré-requisitos obrigatórios?
+- Como o solicitante recebe o resultado real da execução e como são tratadas falhas e cancelamentos?
 
 ## Impacto
 
@@ -24,14 +30,10 @@ Sim — contradição funcional essencial e gate bloqueado.
 
 Confirmar evento de execução, controles prévios, identidade executora e resposta em caso de erro; atualizar a decisão canônica de Charter por aprovação.
 
-## Relações de Charter
+## Relações internas de Charter
 
-[PCH-001 — Propósito do projeto](../PCH-001.md). Quando aplicável, revisar os documentos canônicos já existentes antes de criar objetivos, restrições ou premissas adicionais.
-
-## Fontes para refinamento
-
-- [README.md](../../../../README.md)
-- [docs/adr/pipeline/pipeline-hibrido.md](../../../adr/pipeline/pipeline-hibrido.md)
-- [docs/adr/seguranca/efeitos-capabilities.md](../../../adr/seguranca/efeitos-capabilities.md)
-- [docs/adr/api/protocolo-daemon.md](../../../adr/api/protocolo-daemon.md)
-- [docs/especificacao/fluxos/execucao-artifact.md](../../../especificacao/fluxos/execucao-artifact.md)
+- [PCH-001](../PCH-001.md)
+- [OBJ-001](../objectives/OBJ-001.md)
+- [NOBJ-001](../non-objectives/NOBJ-001.md)
+- [OPEN-013](OPEN-013.md)
+- [OPEN-020](OPEN-020.md)

@@ -6,11 +6,17 @@
 
 A execução automática deve ocorrer sempre pela identidade dedicada do serviço e exclusivamente com as permissões que o administrador lhe atribuir?
 
-## Contexto e evidência histórica
+## Contexto para refinamento
 
-ADR-0012 refere-se à identidade do usuário/processo executor do artifact. PCH-001 e NOBJ-001 vigentes descrevem execução automática por conta de serviço dedicada. Há divergência contextual entre os documentos, que não deve ser resolvida por inferência.
+A baseline atual estabelece execução automática com a identidade dedicada do serviço e somente com permissões atribuídas pelo administrador do sistema operacional. Outra alternativa considerada anteriormente associava a autorização ao usuário ou processo que executa cada artefato. É necessária decisão explícita sobre a fronteira de identidade e autoridade; nenhuma dessas alternativas deve ser inferida a partir de documentos de implementação.
 
-A decisão ou proposta no documento de origem está classificada como **DOCUMENTED**; a revalidação aqui é **PROPOSED**, sem comprovação adicional de implementação. A criação desta questão não revoga automaticamente uma decisão vigente.
+O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+
+## Pontos para deliberação
+
+- A conta dedicada deve ser sempre a única identidade executora?
+- Como são verificadas as permissões e os grupos definidos pelo administrador?
+- Que comportamento é obrigatório quando faltar autorização para acessar um recurso?
 
 ## Impacto
 
@@ -22,14 +28,10 @@ Sim — divergência material entre referências históricas e Charter vigente.
 
 ## Próxima ação
 
-Confirmar o ator executor e harmonizar PCH-001/NOBJ-001 com os requisitos futuros, sem modificar o ADR histórico.
+Confirmar o ator executor e harmonizar PCH-001/NOBJ-001 com os requisitos futuros, registrando a decisão somente no Charter.
 
-## Relações de Charter
+## Relações internas de Charter
 
-[PCH-001 — Propósito do projeto](../PCH-001.md). Quando aplicável, revisar os documentos canônicos já existentes antes de criar objetivos, restrições ou premissas adicionais.
-
-## Fontes para refinamento
-
-- [docs/adr/seguranca/efeitos-capabilities.md](../../../adr/seguranca/efeitos-capabilities.md)
-- [docs/especificacao/fluxos/execucao-artifact.md](../../../especificacao/fluxos/execucao-artifact.md)
-- [README.md](../../../../README.md)
+- [PCH-001](../PCH-001.md)
+- [NOBJ-001](../non-objectives/NOBJ-001.md)
+- [OPEN-022](OPEN-022.md)

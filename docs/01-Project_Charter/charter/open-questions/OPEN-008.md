@@ -6,11 +6,17 @@
 
 A primeira versão deve criar apenas operações pontuais autocontidas, deixando outras modalidades de execução para cadastro ou evolução posterior?
 
-## Contexto e evidência histórica
+## Contexto para refinamento
 
-ADR-0007 restringe novas capacidades originadas da IA ao tipo FUNCTION; módulo e prompt do gerador detalham essa restrição.
+Foi considerada a limitação inicial da geração automática a unidades pequenas e isoladas de processamento, enquanto soluções mais complexas exigiriam validação ou inclusão por outro procedimento. A intenção era tornar a geração verificável e evitar dependências externas não controladas. A forma técnica exata dessa unidade deverá ser definida depois do Charter.
 
-A decisão ou proposta no documento de origem está classificada como **DOCUMENTED**; a revalidação aqui é **PROPOSED**, sem comprovação adicional de implementação. A criação desta questão não revoga automaticamente uma decisão vigente.
+O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+
+## Pontos para deliberação
+
+- A primeira versão deve produzir apenas operações pontuais e autocontidas?
+- Quais características tornam uma capacidade gerada aceitável e passível de reutilização?
+- Como permitir evolução de complexidade sem comprometer as garantias de segurança e previsibilidade?
 
 ## Impacto
 
@@ -24,12 +30,9 @@ Sim — é necessário confirmar a abrangência do produto na V1.
 
 Aprovar alcance funcional da geração de capacidades, preservando a escolha do tipo de artefato para Scope/Implementation.
 
-## Relações de Charter
+## Relações internas de Charter
 
-[PCH-001 — Propósito do projeto](../PCH-001.md). Quando aplicável, revisar os documentos canônicos já existentes antes de criar objetivos, restrições ou premissas adicionais.
-
-## Fontes para refinamento
-
-- [docs/adr/geracao/capabilities-geradas.md](../../../adr/geracao/capabilities-geradas.md)
-- [docs/especificacao/modulos/capability-function-generator.md](../../../especificacao/modulos/capability-function-generator.md)
-- [docs/especificacao/prompts/capability-function-generator.md](../../../especificacao/prompts/capability-function-generator.md)
+- [PCH-001](../PCH-001.md)
+- [OBJ-001](../objectives/OBJ-001.md)
+- [OBJ-002](../objectives/OBJ-002.md)
+- [NOBJ-001](../non-objectives/NOBJ-001.md)

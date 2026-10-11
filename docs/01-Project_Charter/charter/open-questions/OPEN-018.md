@@ -6,11 +6,17 @@
 
 Quais operações locais e classes de solicitação devem integrar a V1 e quais devem ficar explicitamente fora dela?
 
-## Contexto e evidência histórica
+## Contexto para refinamento
 
-README principal e ADR-0011 citam comandos, arquivos, diretórios e consultas de recursos. Não há uma delimitação de alcance completa e verificada no Charter.
+Foram considerados como cenários iniciais operações pontuais no sistema operacional: executar comandos permitidos, consultar diretórios e arquivos, obter contagens e consultar recursos de máquina e rede. A amplitude real do produto ainda precisa ser delimitada, pois disponibilidade de comandos não equivale a autorização para executá-los. A escolha do catálogo de funções e das integrações concretas pertence às etapas seguintes.
 
-A decisão ou proposta no documento de origem está classificada como **DOCUMENTED**; a revalidação aqui é **PROPOSED**, sem comprovação adicional de implementação. A criação desta questão não revoga automaticamente uma decisão vigente.
+O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+
+## Pontos para deliberação
+
+- Quais operações precisam estar expressamente dentro da primeira versão?
+- Que categorias devem ser excluídas ou depender de confirmação adicional?
+- Como comprovar que os cenários escolhidos respeitam as permissões da conta de serviço?
 
 ## Impacto
 
@@ -24,12 +30,9 @@ Sim — delimitação de produto necessária ao gate de Charter.
 
 Consolidar lista de capacidades-alvo por finalidade e propor OBJ/NOBJ específicos quando aplicável.
 
-## Relações de Charter
+## Relações internas de Charter
 
-[PCH-001 — Propósito do projeto](../PCH-001.md). Quando aplicável, revisar os documentos canônicos já existentes antes de criar objetivos, restrições ou premissas adicionais.
-
-## Fontes para refinamento
-
-- [README.md](../../../../README.md)
-- [docs/adr/execucao/isolamento-functions.md](../../../adr/execucao/isolamento-functions.md)
-- [docs/especificacao/modulos/request-normalizer.md](../../../especificacao/modulos/request-normalizer.md)
+- [PCH-001](../PCH-001.md)
+- [OBJ-001](../objectives/OBJ-001.md)
+- [NOBJ-001](../non-objectives/NOBJ-001.md)
+- [OPEN-020](OPEN-020.md)

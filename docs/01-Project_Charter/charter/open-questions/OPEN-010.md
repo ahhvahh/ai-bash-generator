@@ -6,11 +6,17 @@
 
 A tarefa deve ser descrita por propósito, dados necessários e resultado esperado, sem impor antecipadamente uma ferramenta de execução?
 
-## Contexto e evidência histórica
+## Contexto para refinamento
 
-ADR-0009 separa contrato lógico e transporte; normalizador e seu prompt evitam escolher implementação.
+A descrição de uma tarefa deve expressar o que precisa ser feito e quais dados são esperados sem obrigar o solicitante a escolher comandos, formatos ou mecanismos internos. Foi considerada a separação entre significado do pedido e representação necessária para executá-lo. O compromisso do Charter deve ser com a independência funcional, não com um formato específico.
 
-A decisão ou proposta no documento de origem está classificada como **DOCUMENTED**; a revalidação aqui é **PROPOSED**, sem comprovação adicional de implementação. A criação desta questão não revoga automaticamente uma decisão vigente.
+O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+
+## Pontos para deliberação
+
+- O solicitante precisa conhecer ferramentas ou formatos para obter um resultado correto?
+- Quais informações sobre entrada e saída são essenciais para comparar capacidades?
+- Que perdas de significado ou ambiguidades devem resultar em pedido de esclarecimento?
 
 ## Impacto
 
@@ -24,12 +30,8 @@ Não — a semântica funcional pode ser refinada em Scope.
 
 Validar que a intenção do solicitante seja preservada e retirar especificações de transporte do Charter.
 
-## Relações de Charter
+## Relações internas de Charter
 
-[PCH-001 — Propósito do projeto](../PCH-001.md). Quando aplicável, revisar os documentos canônicos já existentes antes de criar objetivos, restrições ou premissas adicionais.
-
-## Fontes para refinamento
-
-- [docs/adr/contratos/contrato-logico-e-stream.md](../../../adr/contratos/contrato-logico-e-stream.md)
-- [docs/especificacao/modulos/request-normalizer.md](../../../especificacao/modulos/request-normalizer.md)
-- [docs/especificacao/prompts/request-normalizer.md](../../../especificacao/prompts/request-normalizer.md)
+- [PCH-001](../PCH-001.md)
+- [OBJ-001](../objectives/OBJ-001.md)
+- [OBJ-002](../objectives/OBJ-002.md)

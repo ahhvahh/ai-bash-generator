@@ -6,11 +6,17 @@
 
 Quais validações e evidências são obrigatórias antes de permitir a execução automática de um script gerado?
 
-## Contexto e evidência histórica
+## Contexto para refinamento
 
-O Validator e o fluxo de correção descrevem validação estrutural, limites de tentativa e ausência de execução na fase antiga de geração. PCH-001 atual introduz execução automática, exigindo uma fronteira explícita.
+A criação de scripts e sua execução automática apresentam riscos distintos. Antes da execução foi considerada a necessidade de validar sintaxe, coerência com a finalidade, conformidade de entradas e saídas, dependências e permissões efetivas. A análise estática oferece evidências limitadas sobre o comportamento real, portanto o Charter precisa determinar quais garantias são exigidas para considerar uma solicitação apta.
 
-A decisão ou proposta no documento de origem está classificada como **DOCUMENTED**; a revalidação aqui é **PROPOSED**, sem comprovação adicional de implementação. A criação desta questão não revoga automaticamente uma decisão vigente.
+O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+
+## Pontos para deliberação
+
+- Quais verificações são indispensáveis antes de executar um script gerado?
+- Que falhas obrigam bloqueio, pedido de correção ou rejeição da solicitação?
+- Como medir segurança e correção sem executar código potencialmente perigoso durante o teste de geração?
 
 ## Impacto
 
@@ -24,13 +30,10 @@ Sim — segurança e critérios de aceite para execução automática dependem d
 
 Separar avaliação estática de garantia de execução e definir em Charter condições de aceite e falha; deixar ferramentas/rotinas de validação para Scope/Implementation.
 
-## Relações de Charter
+## Relações internas de Charter
 
-[PCH-001 — Propósito do projeto](../PCH-001.md). Quando aplicável, revisar os documentos canônicos já existentes antes de criar objetivos, restrições ou premissas adicionais.
-
-## Fontes para refinamento
-
-- [docs/especificacao/modulos/validator.md](../../../especificacao/modulos/validator.md)
-- [docs/especificacao/fluxos/correcao-validacao.md](../../../especificacao/fluxos/correcao-validacao.md)
-- [docs/especificacao/prompts/capability-function-generator.md](../../../especificacao/prompts/capability-function-generator.md)
-- [docs/especificacao/fluxos/geracao-bash.md](../../../especificacao/fluxos/geracao-bash.md)
+- [PCH-001](../PCH-001.md)
+- [OBJ-001](../objectives/OBJ-001.md)
+- [NOBJ-001](../non-objectives/NOBJ-001.md)
+- [OPEN-001](OPEN-001.md)
+- [OPEN-022](OPEN-022.md)

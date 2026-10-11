@@ -6,11 +6,17 @@
 
 A separação entre interpretação por IA, reutilização de capacidades e composição determinística atende ao resultado de produto pretendido?
 
-## Contexto e evidência histórica
+## Contexto para refinamento
 
-ADR-0001 prevê normalização por IA, geração apenas de capacidades ausentes e composição determinística do artefato. Os desenhos e o fluxo de geração desenvolvem esse caminho; trata-se de decisão técnica histórica a revalidar quanto ao benefício esperado.
+Foi considerada uma organização em que a interpretação do pedido identifica atividades, a busca recupera capacidades já conhecidas e apenas as operações ainda não disponíveis exigem nova geração. A composição do resultado final seria previsível e independente de nova interpretação. O benefício pretendido é reduzir trabalho repetido, variabilidade e erros.
 
-A decisão ou proposta no documento de origem está classificada como **DOCUMENTED**; a revalidação aqui é **PROPOSED**, sem comprovação adicional de implementação. A criação desta questão não revoga automaticamente uma decisão vigente.
+O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+
+## Pontos para deliberação
+
+- A previsibilidade do resultado e o reaproveitamento são garantias obrigatórias do produto?
+- Quando a geração de nova capacidade deve ser evitada em favor de uma existente?
+- Que critérios de sucesso comprovam a separação das responsabilidades sem impor um desenho técnico?
 
 ## Impacto
 
@@ -24,14 +30,8 @@ Não — a escolha do método pertence às etapas seguintes, desde que os objeti
 
 Confirmar as garantias funcionais exigidas, verificar sua cobertura em OBJ-001/OBJ-002 e encaminhar a composição técnica a Scope/Implementation.
 
-## Relações de Charter
+## Relações internas de Charter
 
-[PCH-001 — Propósito do projeto](../PCH-001.md). Quando aplicável, revisar os documentos canônicos já existentes antes de criar objetivos, restrições ou premissas adicionais.
-
-## Fontes para refinamento
-
-- [docs/adr/pipeline/pipeline-hibrido.md](../../../adr/pipeline/pipeline-hibrido.md)
-- [docs/desenho/pipeline-geracao.md](../../../desenho/pipeline-geracao.md)
-- [docs/especificacao/fluxos/geracao-bash.md](../../../especificacao/fluxos/geracao-bash.md)
-- [docs/especificacao/modulos/bash-output.md](../../../especificacao/modulos/bash-output.md)
-- [docs/README.md](../../../README.md)
+- [PCH-001](../PCH-001.md)
+- [OBJ-001](../objectives/OBJ-001.md)
+- [OBJ-002](../objectives/OBJ-002.md)

@@ -6,11 +6,17 @@
 
 Qual compromisso funcional de compatibilidade entre entradas, resultados e erros de capacidades é necessário para compor tarefas distintas?
 
-## Contexto e evidência histórica
+## Contexto para refinamento
 
-ADR-0003 fixa historicamente JSON UTF-8 em stdin/stdout de funções. CTR-0005 especifica a fronteira e limitações para encadeamento.
+Uma operação pode produzir dados para outra, incluindo coleções, objetos e valores simples. Também foi considerada a necessidade de manter diagnósticos separados dos resultados funcionais e de preservar dependências quando tarefas independentes são processadas. O formato físico de intercâmbio foi tratado anteriormente como opção de implementação.
 
-A decisão ou proposta no documento de origem está classificada como **DOCUMENTED**; a revalidação aqui é **PROPOSED**, sem comprovação adicional de implementação. A criação desta questão não revoga automaticamente uma decisão vigente.
+O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+
+## Pontos para deliberação
+
+- Quais categorias de dados e erros devem ser transmitidas de forma inequívoca?
+- A composição de resultados de múltiplas atividades é necessária desde a primeira versão?
+- Quais evidências permitem confirmar que não houve perda ou alteração indevida dos dados?
 
 ## Impacto
 
@@ -24,11 +30,8 @@ Não — o requisito funcional é tratável em Scope.
 
 Confirmar critérios de compatibilidade, resultados e tratamento de falhas em alto nível.
 
-## Relações de Charter
+## Relações internas de Charter
 
-[PCH-001 — Propósito do projeto](../PCH-001.md). Quando aplicável, revisar os documentos canônicos já existentes antes de criar objetivos, restrições ou premissas adicionais.
-
-## Fontes para refinamento
-
-- [docs/adr/execucao/abi-stdout-stdin.md](../../../adr/execucao/abi-stdout-stdin.md)
-- [docs/especificacao/contratos/function-json.md](../../../especificacao/contratos/function-json.md)
+- [PCH-001](../PCH-001.md)
+- [OBJ-001](../objectives/OBJ-001.md)
+- [OBJ-002](../objectives/OBJ-002.md)

@@ -6,11 +6,17 @@
 
 A reutilização deve garantir reprodutibilidade, histórico de alterações e identificação da versão efetivamente usada?
 
-## Contexto e evidência histórica
+## Contexto para refinamento
 
-ADR-0004 adota catálogo PostgreSQL com versões imutáveis; desenho e especificação registram identidade, uso e ciclo de vida.
+Capacidades reutilizáveis podem evoluir sem mudar seu propósito, entrada e resultado esperado. Foi considerada a preservação de versões históricas, de modo que uma solicitação utilize sempre a mesma versão selecionada, permitindo auditoria e reprodução dos resultados. A tecnologia e a forma de armazenamento não são compromissos do Charter.
 
-A decisão ou proposta no documento de origem está classificada como **DOCUMENTED**; a revalidação aqui é **PROPOSED**, sem comprovação adicional de implementação. A criação desta questão não revoga automaticamente uma decisão vigente.
+O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+
+## Pontos para deliberação
+
+- Reprodutibilidade e histórico imutável são requisitos obrigatórios?
+- Quais eventos de ativação, substituição e uso devem ser auditáveis?
+- Qual expectativa de recuperação ou reversão deve orientar o refinamento futuro?
 
 ## Impacto
 
@@ -24,12 +30,7 @@ Não — requisito técnico de persistência deve ser consolidado posteriormente
 
 Decidir quais garantias de histórico e reprodutibilidade são requisitos de resultado do produto e vinculá-las a OBJ-002.
 
-## Relações de Charter
+## Relações internas de Charter
 
-[PCH-001 — Propósito do projeto](../PCH-001.md). Quando aplicável, revisar os documentos canônicos já existentes antes de criar objetivos, restrições ou premissas adicionais.
-
-## Fontes para refinamento
-
-- [docs/adr/persistencia/catalogo-capabilities.md](../../../adr/persistencia/catalogo-capabilities.md)
-- [docs/desenho/catalogo-capabilities.md](../../../desenho/catalogo-capabilities.md)
-- [docs/especificacao/persistencia/catalogo-capabilities.md](../../../especificacao/persistencia/catalogo-capabilities.md)
+- [PCH-001](../PCH-001.md)
+- [OBJ-002](../objectives/OBJ-002.md)

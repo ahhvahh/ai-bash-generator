@@ -4,7 +4,7 @@
 
 ## Regra de organização
 
-O documento [PCH-001](PCH-001.md) contém o propósito, problema, stakeholders e limites do projeto. Os documentos especializados evoluem de modo independente, sem antecipar Scope ou Implementation.
+O documento [PCH-001](PCH-001.md) contém o propósito, problema, stakeholders e limites do projeto. Os documentos especializados evoluem de modo independente, sem antecipar Scope ou Implementation. Links normativos desta etapa apontam somente para outros documentos do próprio Charter; referências externas são limitadas ao padrão metodológico, quando necessárias.
 
 ## Índice de documentos canônicos
 
@@ -17,9 +17,9 @@ O documento [PCH-001](PCH-001.md) contém o propósito, problema, stakeholders e
 - [ASM-001 — Desempenho na configuração mínima](assumptions/ASM-001.md)
 - [OPEN-001 — Critérios de sucesso](open-questions/OPEN-001.md)
 
-## Questões propostas de revalidação das decisões históricas
+## Questões para refinamento do Charter
 
-Os registros seguintes recuperam decisões e pendências da documentação legada apenas como **evidência para refinamento de Charter**. Não promovem automaticamente decisões técnicas a requisitos de produto, nem substituem ADRs/contratos de Scope e Implementation. A maioria das questões tem impacto no produto; as demais registram requisitos de resultado a confirmar.
+As questões abaixo contêm, em texto próprio, os assuntos e alternativas que precisam ser reconsiderados. O Charter não depende de documentos anteriores à sua estrutura. Cada decisão aprovada deve ser consolidada no documento canônico desta etapa, sem importar contratos de Scope ou decisões técnicas de Implementation.
 
 - [OPEN-002 — Orquestração da geração e composição de resultados](open-questions/OPEN-002.md)
 - [OPEN-003 — Contratos estruturados na interação com inferência](open-questions/OPEN-003.md)

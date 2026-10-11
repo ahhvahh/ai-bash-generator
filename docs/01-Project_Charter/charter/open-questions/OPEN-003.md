@@ -6,11 +6,17 @@
 
 Quais garantias de clareza, validade e interoperabilidade das solicitações são indispensáveis, independentemente do formato de contrato?
 
-## Contexto e evidência histórica
+## Contexto para refinamento
 
-ADR-0002 registra Protobuf no plano de controle e TextProto na fronteira de inferência. O contrato de pipeline e o prompt do normalizador usam representações estruturadas; a opção técnica não é automaticamente um compromisso de Charter.
+A troca de informações entre etapas pode exigir conteúdo estruturado, validável e compreensível. Foram avaliadas representações distintas para comunicação entre componentes e para instruções de modelos de inferência. A escolha de codificação não altera, por si só, a necessidade do produto de preservar significado e integridade.
 
-A decisão ou proposta no documento de origem está classificada como **DOCUMENTED**; a revalidação aqui é **PROPOSED**, sem comprovação adicional de implementação. A criação desta questão não revoga automaticamente uma decisão vigente.
+O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+
+## Pontos para deliberação
+
+- Que garantias de clareza, validação e integridade são exigidas das informações processadas?
+- O produto exige interoperabilidade entre mecanismos de inferência diferentes?
+- A comparação entre alternativas precisa ser baseada em testes de custo, qualidade e compatibilidade?
 
 ## Impacto
 
@@ -24,12 +30,8 @@ Não — formato e schema são decisões de Scope/Implementation.
 
 Refinar o resultado verificável de interoperabilidade, sem transportar formatos físicos para Charter.
 
-## Relações de Charter
+## Relações internas de Charter
 
-[PCH-001 — Propósito do projeto](../PCH-001.md). Quando aplicável, revisar os documentos canônicos já existentes antes de criar objetivos, restrições ou premissas adicionais.
-
-## Fontes para refinamento
-
-- [docs/adr/contratos/protobuf-e-textproto.md](../../../adr/contratos/protobuf-e-textproto.md)
-- [docs/especificacao/contratos/pipeline-protobuf.md](../../../especificacao/contratos/pipeline-protobuf.md)
-- [docs/especificacao/prompts/request-normalizer.md](../../../especificacao/prompts/request-normalizer.md)
+- [PCH-001](../PCH-001.md)
+- [OBJ-001](../objectives/OBJ-001.md)
+- [CON-001](../constraints/CON-001.md)

@@ -6,11 +6,17 @@
 
 Quais capacidades de manutenção, inspeção e auditoria devem estar disponíveis ao responsável local pelo sistema?
 
-## Contexto e evidência histórica
+## Contexto para refinamento
 
-CTR-0003 contempla ajustes de agentes e modelos; OPS-0001 registra ausência de CLI/hot reload atuais e propõe manutenção. README principal descreve logs e observabilidade.
+A operação do produto exige configurar os mecanismos de inferência, permissões, recursos disponíveis e critérios de observabilidade. Foram consideradas alterações administradas de configuração e diagnósticos locais, mas não está estabelecido um compromisso único de manutenção sem interrupção. A identidade do solicitante local não constitui automaticamente um perfil de autorização próprio do produto.
 
-A decisão ou proposta no documento de origem está classificada como **DOCUMENTED**; a revalidação aqui é **PROPOSED**, sem comprovação adicional de implementação. A criação desta questão não revoga automaticamente uma decisão vigente.
+O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+
+## Pontos para deliberação
+
+- Quais configurações essenciais precisam ser administráveis sem alterar o código?
+- Que operações de manutenção exigem interrupção, validação ou possibilidade de reversão?
+- Quais eventos devem ser auditáveis para investigar falhas sem registrar conteúdo sensível desnecessário?
 
 ## Impacto
 
@@ -24,13 +30,9 @@ Não — detalhes de CLI, arquivos e recarga são Implementation.
 
 Decidir o nível de manutenção e evidência de auditoria que compõe o resultado do produto.
 
-## Relações de Charter
+## Relações internas de Charter
 
-[PCH-001 — Propósito do projeto](../PCH-001.md). Quando aplicável, revisar os documentos canônicos já existentes antes de criar objetivos, restrições ou premissas adicionais.
-
-## Fontes para refinamento
-
-- [docs/especificacao/contratos/agentes.md](../../../especificacao/contratos/agentes.md)
-- [docs/especificacao/runtime/manutencao-inferencia.md](../../../especificacao/runtime/manutencao-inferencia.md)
-- [README.md](../../../../README.md)
-- [docs/pendencias.md](../../../pendencias.md)
+- [PCH-001](../PCH-001.md)
+- [CON-001](../constraints/CON-001.md)
+- [NOBJ-001](../non-objectives/NOBJ-001.md)
+- [OPEN-015](OPEN-015.md)

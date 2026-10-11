@@ -6,11 +6,17 @@
 
 Quais distribuições, condições de instalação, modos de operação e garantias de portabilidade integram o compromisso do produto?
 
-## Contexto e evidência histórica
+## Contexto para refinamento
 
-README principal trata de distribuição Debian, serviço e instalação; FLW de execução distingue dependência de host e artefato autocontido. CON-002 fixa mínimo de quatro CPUs e 8 GB de RAM, divergindo do README legado.
+A intenção do produto inclui operação em ambiente Linux com uma identidade dedicada e condições mínimas de recurso. A configuração vigente do Charter exige quatro CPUs e 8 GB de RAM; a referência anterior de dois núcleos e 8 GB não integra os requisitos atuais. Foram também consideradas diferentes formas de instalação e a necessidade de declarar recursos externos para executar os artefatos.
 
-A decisão ou proposta no documento de origem está classificada como **DOCUMENTED**; a revalidação aqui é **PROPOSED**, sem comprovação adicional de implementação. A criação desta questão não revoga automaticamente uma decisão vigente.
+O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+
+## Pontos para deliberação
+
+- A disponibilidade em um ambiente Linux específico é obrigação do produto ou apenas alvo inicial?
+- O artefato precisa funcionar fora do ambiente que o gerou, e com quais pré-condições?
+- Quais garantias de instalação, atualização e disponibilidade justificam critérios verificáveis de aceitação?
 
 ## Impacto
 
@@ -24,14 +30,9 @@ Sim — requisitos de plataforma e configuração mínima são restrições esse
 
 Confirmar plataformas e limites de suporte, corrigir eventual inconsistência com CON-002 e deixar empacotamento detalhado à Implementation.
 
-## Relações de Charter
+## Relações internas de Charter
 
-[PCH-001 — Propósito do projeto](../PCH-001.md). Quando aplicável, revisar os documentos canônicos já existentes antes de criar objetivos, restrições ou premissas adicionais.
-
-## Fontes para refinamento
-
-- [README.md](../../../../README.md)
-- [src/go/README.md](../../../../src/go/README.md)
-- [docs/especificacao/fluxos/execucao-artifact.md](../../../especificacao/fluxos/execucao-artifact.md)
-- [docs/especificacao/persistencia/catalogo-capabilities.md](../../../especificacao/persistencia/catalogo-capabilities.md)
-- [docs/pendencias.md](../../../pendencias.md)
+- [PCH-001](../PCH-001.md)
+- [CON-002](../constraints/CON-002.md)
+- [ASM-001](../assumptions/ASM-001.md)
+- [NOBJ-001](../non-objectives/NOBJ-001.md)

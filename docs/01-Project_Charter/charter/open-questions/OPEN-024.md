@@ -6,11 +6,17 @@
 
 Quais informações o produto pode compartilhar com provedores ou integrações externas, e como o solicitante controla essa autorização?
 
-## Contexto e evidência histórica
+## Contexto para refinamento
 
-CON-001 admite processamento externo opcional. ADR-0005, contratos de MCP e a integração de Google Mail descrevem tratamento de dados não confiáveis, permissões e auditoria.
+O sistema pode, quando configurado, utilizar processamento externo e dados obtidos de integrações. Isso introduz exposição potencial de informações do ambiente, resultados não confiáveis e risco de acesso indevido. A compatibilidade com funcionamento offline permanece um compromisso, e a autorização para enviar dados não deve ser inferida da mera disponibilidade de uma integração.
 
-A decisão ou proposta no documento de origem está classificada como **DOCUMENTED**; a revalidação aqui é **PROPOSED**, sem comprovação adicional de implementação. A criação desta questão não revoga automaticamente uma decisão vigente.
+O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+
+## Pontos para deliberação
+
+- Que classes de informação não podem sair do ambiente local?
+- Como o administrador autoriza ou restringe cada finalidade de processamento externo?
+- Que registros de uso e tratamento de dados são indispensáveis sem revelar conteúdo sensível?
 
 ## Impacto
 
@@ -24,13 +30,9 @@ Sim — política de saída de dados interfere diretamente em CON-001.
 
 Decidir princípio de minimização de dados e autorização; registrar restrição canônica apropriada no Charter.
 
-## Relações de Charter
+## Relações internas de Charter
 
-[PCH-001 — Propósito do projeto](../PCH-001.md). Quando aplicável, revisar os documentos canônicos já existentes antes de criar objetivos, restrições ou premissas adicionais.
-
-## Fontes para refinamento
-
-- [docs/especificacao/integracoes/google-mail.md](../../../especificacao/integracoes/google-mail.md)
-- [docs/especificacao/contratos/mcp.md](../../../especificacao/contratos/mcp.md)
-- [docs/adr/integracoes/orquestracao-mcp.md](../../../adr/integracoes/orquestracao-mcp.md)
-- [docs/especificacao/modulos/tool-orchestrator.md](../../../especificacao/modulos/tool-orchestrator.md)
+- [PCH-001](../PCH-001.md)
+- [CON-001](../constraints/CON-001.md)
+- [NOBJ-001](../non-objectives/NOBJ-001.md)
+- [OPEN-006](OPEN-006.md)

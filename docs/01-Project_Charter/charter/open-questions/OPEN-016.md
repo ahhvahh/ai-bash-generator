@@ -6,11 +6,17 @@
 
 Quais operações externas e garantias de erro, cancelamento e controle local o produto precisa oferecer?
 
-## Contexto e evidência histórica
+## Contexto para refinamento
 
-ADR-0015 está em refinamento e descreve protocolo externo local ainda incompleto. DSG-0003 e CTR-0004 estão associados à lacuna.
+O produto precisa receber solicitações, acompanhar seu estado e devolver resultados ou falhas de forma confiável aos processos que o utilizam. Foi considerada uma comunicação local com tratamento de correlação, cancelamento e limites de mensagem, mas os detalhes de protocolo não são compromisso do Charter. A intenção é manter uma fronteira de acesso previsível e adequada às permissões locais.
 
-A decisão ou proposta no documento de origem está classificada como **DOCUMENTED**; a revalidação aqui é **PROPOSED**, sem comprovação adicional de implementação. A criação desta questão não revoga automaticamente uma decisão vigente.
+O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+
+## Pontos para deliberação
+
+- Quais tipos de solicitação e resultado devem ser acessíveis ao solicitante local?
+- O usuário precisa consultar progresso e cancelar operações em andamento?
+- Quais garantias de isolamento e não exposição pública são obrigatórias?
 
 ## Impacto
 
@@ -24,12 +30,9 @@ Não — formato de mensagens, framing e transporte são responsabilidades poste
 
 Confirmar operações externas mínimas e limites de acesso; detalhar contratos em Scope.
 
-## Relações de Charter
+## Relações internas de Charter
 
-[PCH-001 — Propósito do projeto](../PCH-001.md). Quando aplicável, revisar os documentos canônicos já existentes antes de criar objetivos, restrições ou premissas adicionais.
-
-## Fontes para refinamento
-
-- [docs/adr/api/protocolo-daemon.md](../../../adr/api/protocolo-daemon.md)
-- [docs/desenho/runtime-daemon.md](../../../desenho/runtime-daemon.md)
-- [docs/especificacao/contratos/api-daemon.md](../../../especificacao/contratos/api-daemon.md)
+- [PCH-001](../PCH-001.md)
+- [OBJ-001](../objectives/OBJ-001.md)
+- [CON-001](../constraints/CON-001.md)
+- [NOBJ-001](../non-objectives/NOBJ-001.md)

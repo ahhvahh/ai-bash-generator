@@ -11,7 +11,7 @@ Quais casos de uso, indicadores e metas mínimas demonstrarão que os objetivos 
 
 ## Contexto
 
-O [README do projeto](../../../../README.md) apresenta funcionalidades e testes, mas não estabelece uma baseline única de metas de qualidade, desempenho e aprovação para o Charter.
+A geração de scripts e a reutilização de capacidades são resultados distintos. O Charter fixa uma meta inicial de qualidade para a geração, mas ainda precisa estabelecer os casos de teste, resultados esperados, indicadores de reutilização e limites de aceitação de falhas.
 
 ## Decisão parcial aprovada — 10/10/2026
 
@@ -28,20 +28,24 @@ Uma solicitação somente é aprovada quando **ambos** os critérios forem satis
 
 Esta decisão fixa o número de testes e a meta para geração; **não define uma taxa de sucesso específica para reutilização de capacidades**. A decisão funcional do [OBJ-002](../objectives/OBJ-002.md) agora exige procurar e comparar capacidades existentes por finalidade, entradas, resultados esperados e restrições antes de gerar nova função; a meta de acerto permanece pendente.
 
-## Decisão parcial aprovada — 11/10/2026
+## Critérios de reutilização a revalidar — 11/10/2026
 
-A regra de compatibilidade de [OBJ-002](../objectives/OBJ-002.md) está definida pelos ADRs existentes:
+O resultado esperado em [OBJ-002](../objectives/OBJ-002.md) define correspondência exata entre três propriedades de uma capacidade: contrato lógico de entrada, propósito e contrato lógico de saída. Se houver uma capacidade elegível exatamente compatível, a solicitação deve reutilizá-la. Quando não houver, a geração de uma nova capacidade pode ser necessária.
 
-- [ADR-0008](../../../adr/catalogo/pinagem-versao-capability.md): reutilizar somente com igualdade exata de contrato lógico de entrada, propósito e contrato lógico de saída; manter a versão ativa selecionada durante toda a requisição; preservar versões anteriores.
-- [ADR-0009](../../../adr/contratos/contrato-logico-e-stream.md): comparar contratos lógicos, sem confundir semântica com transporte.
-- [ADR-0003](../../../adr/execucao/abi-stdout-stdin.md) e [ADR-0010](../../../adr/execucao/binding-invocacao.md): objetos JSON na fronteira das funções e adaptação encapsulada por capacidade.
-- [ADR-0001](../../../adr/pipeline/pipeline-hibrido.md): gerar função quando não existir solução compatível e compor deterministicamente o script final.
+A avaliação deve distinguir:
+1. correspondência exata e reutilização correta;
+2. ausência de correspondência e geração justificada;
+3. incompatibilidade de entrada, propósito ou saída e rejeição correta da reutilização;
+4. consistência da versão escolhida durante a mesma solicitação e preservação do histórico de versões.
 
-Para avaliar reutilização, considerar os casos em que exista capacidade elegível exatamente compatível. Ausência de correspondência encaminha para geração e não constitui falha de reutilização. Casos incompatíveis devem verificar separadamente a ausência de reutilização indevida.
+**Assuntos que exigem nova deliberação:**
+- [OPEN-009 — Critério de equivalência](OPEN-009.md): confirmar quando igualdade exata é realmente necessária e como comprovar seu acerto;
+- [OPEN-010 — Intenção versus mecanismos técnicos](OPEN-010.md): determinar o que precisa ser comparado semanticamente, sem determinar formato ou implementação no Charter;
+- [OPEN-011 — Composição de capacidades diferentes](OPEN-011.md): confirmar a necessidade de interoperabilidade;
+- [OPEN-020 — Garantias de validação](OPEN-020.md): definir o nível de evidência exigido antes de aprovar uma solução.
 
-**Continuam pendentes:** seleção dos casos de teste e definição da meta de acerto da reutilização. Os 90% aprovados para geração não se aplicam automaticamente a esse objetivo.
+A representação física dos contratos e seus métodos de comparação pertencem às etapas seguintes, após aprovação das necessidades de produto. **Continuam pendentes** os casos de teste e a meta específica de acerto da reutilização. A meta de 90% para geração não se aplica automaticamente à reutilização.
 
-A representação física final dos contratos e a canonicalização da comparação continuam pendências técnicas nos [registros existentes](../../../pendencias.md). Esta incorporação não resolve essas lacunas nem comprova implementação.
 
 ## Impacto
 

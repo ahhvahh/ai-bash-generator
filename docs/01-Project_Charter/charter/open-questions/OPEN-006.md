@@ -6,11 +6,17 @@
 
 O produto deve permitir integrações durante a geração e quais limites de autorização, rastreabilidade e confiança são obrigatórios?
 
-## Contexto e evidência histórica
+## Contexto para refinamento
 
-ADR-0005 descreve orquestração central de ferramentas/MCP com validação e credenciais fora do modelo. Contrato e módulo estabelecem permissões e limites.
+Para consultar ferramentas externas durante o processamento, foi considerada uma camada de controle da aplicação responsável por permissões, limites, validação de respostas e auditoria. Resultados externos podem trazer dados incorretos ou instruções hostis e não devem ampliar a autoridade do sistema. A necessidade de integração permanece subordinada ao propósito do produto.
 
-A decisão ou proposta no documento de origem está classificada como **DOCUMENTED**; a revalidação aqui é **PROPOSED**, sem comprovação adicional de implementação. A criação desta questão não revoga automaticamente uma decisão vigente.
+O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+
+## Pontos para deliberação
+
+- Quais classes de operações externas podem ser permitidas e quais devem permanecer excluídas?
+- Que autorização e rastreabilidade devem ser exigidas independentemente da ferramenta escolhida?
+- Quais informações podem ser encaminhadas a terceiros sem comprometer segurança e privacidade?
 
 ## Impacto
 
@@ -24,12 +30,8 @@ Sim — as permissões e o uso de integrações afetam diretamente as restriçõ
 
 Confirmar a política de autorização de integrações em nível de produto; detalhar MCP, schemas e timeouts em Scope/Implementation.
 
-## Relações de Charter
+## Relações internas de Charter
 
-[PCH-001 — Propósito do projeto](../PCH-001.md). Quando aplicável, revisar os documentos canônicos já existentes antes de criar objetivos, restrições ou premissas adicionais.
-
-## Fontes para refinamento
-
-- [docs/adr/integracoes/orquestracao-mcp.md](../../../adr/integracoes/orquestracao-mcp.md)
-- [docs/especificacao/contratos/mcp.md](../../../especificacao/contratos/mcp.md)
-- [docs/especificacao/modulos/tool-orchestrator.md](../../../especificacao/modulos/tool-orchestrator.md)
+- [PCH-001](../PCH-001.md)
+- [CON-001](../constraints/CON-001.md)
+- [NOBJ-001](../non-objectives/NOBJ-001.md)
