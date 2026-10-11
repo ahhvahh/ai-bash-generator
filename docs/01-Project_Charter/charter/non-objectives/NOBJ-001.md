@@ -1,24 +1,21 @@
-# NOBJ-001 — Não executar automaticamente scripts gerados
+# NOBJ-001 — Não executar além das permissões concedidas ao usuário do serviço
 
 ![Tipo: NOBJ](../../assets/documentation-style/badges/badge-type-nobj.svg) ![Status: refinement](../../assets/documentation-style/badges/badge-status-refinement.svg) ![Versão: v1](../../assets/documentation-style/badges/badge-version-v1.svg)
 
-**ID:** NOBJ-001  
-**Status:** `refinement`  
-**Version:** `v1`  
-**Evidência:** `DOCUMENTED` no [README do projeto](../../../../README.md).
+**Evidência:** `DOCUMENTED` — decisão do responsável pelo projeto em 11/10/2026, substituindo a exclusão anterior de execução automática.
 
 ## Exclusão
 
-Não é propósito do projeto executar automaticamente o script Bash produzido como consequência da geração.
+O projeto não deve contornar nem ampliar automaticamente as permissões concedidas à conta de serviço no sistema operacional.
 
 ## Justificativa
 
-A geração e a execução possuem riscos e responsabilidades distintos. A saída deve poder ser revisada antes da execução.
+Os scripts serão executados automaticamente no próprio SO por um serviço com usuário dedicado. Essa conta será criada na configuração do ambiente, e suas permissões e associações a grupos serão definidas pelo usuário responsável pela administração.
 
 ## Efeito sobre expectativas
 
-A geração de um script não significa que suas ações foram executadas no ambiente do usuário. A decisão de executá-lo pertence a operação independente e autorizada.
+A execução automática faz parte da finalidade do projeto. Seu alcance será determinado pelas permissões efetivas da conta de serviço, incluindo seus grupos de acesso e demais restrições do SO. A identidade do solicitante não substitui a conta usada para executar os scripts.
 
 ## Condição de revisão
 
-Qualquer execução automatizada futura exige novo escopo e avaliação explícita dos riscos e permissões.
+Qualquer ampliação do alcance depende de alteração explícita das permissões pelo administrador, sem concessão autônoma de privilégios pelo serviço.
