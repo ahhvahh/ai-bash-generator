@@ -5,7 +5,7 @@
 **ID:** OPEN-001  
 **Status:** `refinement`  
 **Version:** `v1`  
-**Evidência:** `PROPOSED`.
+**Evidência:** `DOCUMENTED` para a meta aprovada; critérios restantes em `refinement`.
 
 ## Pergunta
 
@@ -15,9 +15,24 @@ Quais casos de uso, indicadores e metas mínimas demonstrarão que os objetivos 
 
 O [README do projeto](../../../../README.md) apresenta funcionalidades e testes, mas não estabelece uma baseline única de metas de qualidade, desempenho e aprovação para o Charter.
 
+## Decisão parcial aprovada — 10/10/2026
+
+Para o objetivo de geração ([OBJ-001](../objectives/OBJ-001.md)), adotar uma avaliação composta por **20 solicitações de teste**, com taxa mínima de sucesso de **90%**, correspondente a **pelo menos 18 solicitações aprovadas**.
+
+Uma solicitação somente é aprovada quando **ambos** os critérios forem satisfeitos:
+
+1. o script Bash gerado tem sintaxe válida;
+2. o script atende à finalidade descrita na solicitação, conforme resultados esperados estabelecidos previamente para o caso.
+
+**Cálculo:** taxa de sucesso = (quantidade de solicitações aprovadas ÷ 20) × 100. Uma falha em qualquer um dos dois critérios reprova a solicitação.
+
+**Evidências por solicitação:** registrar a descrição do pedido, resultado esperado, artefato produzido ou sua identificação, avaliação da sintaxe, avaliação do atendimento à finalidade, resultado aprovado/reprovado e justificativa para eventual reprovação. Os scripts gerados **não são executados** por este critério. A revisão estática da finalidade não comprova integralmente o comportamento em execução.
+
+Esta decisão fixa o número de testes e a meta para geração; **não define uma taxa de sucesso específica para reutilização de capacidades**.
+
 ## Impacto
 
-Sem critérios acordados, não é possível verificar objetivamente o sucesso dos resultados esperados.
+O sucesso da geração passa a ter meta verificável. Ainda faltam a seleção/descrição dos 20 casos e seus resultados esperados, além da meta de reutilização de capacidades relativa a [OBJ-002](../objectives/OBJ-002.md).
 
 ## Bloqueadora
 
@@ -25,4 +40,7 @@ Sem critérios acordados, não é possível verificar objetivamente o sucesso do
 
 ## Próxima ação
 
-Definir com os responsáveis os casos de aceitação, métricas e limiares; registrar a decisão nos documentos canônicos dos objetivos e reavaliar o gate.
+1. Definir e aprovar previamente as 20 solicitações representativas, incluindo os resultados esperados de cada uma.
+2. Definir a meta mensurável de reutilização de capacidades para [OBJ-002](../objectives/OBJ-002.md), sem presumir que os 90% de geração também se aplicam à reutilização.
+3. Registrar as evidências das avaliações quando os testes forem realizados; não presumir execução ou aprovação de testes nesta decisão documental.
+4. Reavaliar o gate Charter → Scope após tratar as demais pendências, incluindo confirmação dos stakeholders de [PCH-001](../PCH-001.md).
