@@ -14,8 +14,9 @@ O documento [PCH-001](PCH-001.md) contém o propósito, problema, stakeholders e
 - [OBJ-001 — Geração de scripts](objectives/OBJ-001.md)
 - [OBJ-002 — Reutilização de capacidades](objectives/OBJ-002.md)
 - [NOBJ-001 — Sem execução automática](non-objectives/NOBJ-001.md)
-- [CON-001 — Processamento local e isolamento](constraints/CON-001.md)
-- [ASM-001 — Hardware limitado](assumptions/ASM-001.md)
+- [CON-001 — Offline e processamento externo opcional](constraints/CON-001.md)
+- [CON-002 — Recursos mínimos](constraints/CON-002.md)
+- [ASM-001 — Desempenho na configuração mínima](assumptions/ASM-001.md)
 - [OPEN-001 — Critérios de sucesso](open-questions/OPEN-001.md)
 
 ## Critério de refinamento

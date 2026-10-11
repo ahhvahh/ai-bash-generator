@@ -16,8 +16,9 @@ Registrar o problema, o propósito, os resultados, as exclusões e os limites qu
 - [OBJ-001 — Gerar scripts Bash a partir de linguagem natural](charter/objectives/OBJ-001.md)
 - [OBJ-002 — Reutilizar capacidades existentes](charter/objectives/OBJ-002.md)
 - [NOBJ-001 — Não executar scripts automaticamente](charter/non-objectives/NOBJ-001.md)
-- [CON-001 — Processamento local e isolamento da inferência](charter/constraints/CON-001.md)
-- [ASM-001 — Viabilidade em hardware limitado](charter/assumptions/ASM-001.md)
+- [CON-001 — Operação offline e APIs externas opcionais](charter/constraints/CON-001.md)
+- [CON-002 — Recursos mínimos de execução](charter/constraints/CON-002.md)
+- [ASM-001 — Premissa de desempenho na configuração de referência](charter/assumptions/ASM-001.md)
 - [OPEN-001 — Critérios mensuráveis de sucesso](charter/open-questions/OPEN-001.md)
 
 ## Fontes e controle
@@ -29,4 +30,4 @@ Registrar o problema, o propósito, os resultados, as exclusões e os limites qu
 
 ## Gate Charter → Scope
 
-**BLOCKED.** Os conceitos ainda estão em `refinement`, com metas quantitativas e stakeholders a validar; a [OPEN-001](charter/open-questions/OPEN-001.md) permanece bloqueadora.
+**BLOCKED.** A meta de geração (90% em 20 solicitações) está definida, mas os 20 casos e seus resultados esperados, além da meta específica de reutilização, seguem pendentes em [OPEN-001](charter/open-questions/OPEN-001.md). Os documentos necessários ainda estão em `refinement`.

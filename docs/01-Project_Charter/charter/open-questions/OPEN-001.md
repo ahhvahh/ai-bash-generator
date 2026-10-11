@@ -28,11 +28,11 @@ Uma solicitação somente é aprovada quando **ambos** os critérios forem satis
 
 **Evidências por solicitação:** registrar a descrição do pedido, resultado esperado, artefato produzido ou sua identificação, avaliação da sintaxe, avaliação do atendimento à finalidade, resultado aprovado/reprovado e justificativa para eventual reprovação. Os scripts gerados **não são executados** por este critério. A revisão estática da finalidade não comprova integralmente o comportamento em execução.
 
-Esta decisão fixa o número de testes e a meta para geração; **não define uma taxa de sucesso específica para reutilização de capacidades**.
+Esta decisão fixa o número de testes e a meta para geração; **não define uma taxa de sucesso específica para reutilização de capacidades**. A decisão funcional do [OBJ-002](../objectives/OBJ-002.md) agora exige procurar e comparar capacidades existentes por finalidade, entradas, resultados esperados e restrições antes de gerar nova função; a meta numérica permanece pendente.
 
 ## Impacto
 
-O sucesso da geração passa a ter meta verificável. Ainda faltam a seleção/descrição dos 20 casos e seus resultados esperados, além da meta de reutilização de capacidades relativa a [OBJ-002](../objectives/OBJ-002.md).
+O sucesso da geração possui meta verificável e a regra funcional de comparação de capacidades do [OBJ-002](../objectives/OBJ-002.md) foi definida. Ainda faltam os 20 casos e seus resultados esperados e uma meta quantitativa própria para a reutilização.
 
 ## Bloqueadora
 
@@ -43,4 +43,4 @@ O sucesso da geração passa a ter meta verificável. Ainda faltam a seleção/d
 1. Definir e aprovar previamente as 20 solicitações representativas, incluindo os resultados esperados de cada uma.
 2. Definir a meta mensurável de reutilização de capacidades para [OBJ-002](../objectives/OBJ-002.md), sem presumir que os 90% de geração também se aplicam à reutilização.
 3. Registrar as evidências das avaliações quando os testes forem realizados; não presumir execução ou aprovação de testes nesta decisão documental.
-4. Reavaliar o gate Charter → Scope após tratar as demais pendências, incluindo confirmação dos stakeholders de [PCH-001](../PCH-001.md).
+4. Reavaliar o gate Charter → Scope após tratar as demais pendências. A identidade operacional local, sem perfis de autorização próprios, foi estabelecida em [PCH-001](../PCH-001.md).
