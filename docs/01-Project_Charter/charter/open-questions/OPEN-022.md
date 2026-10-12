@@ -45,3 +45,7 @@ Consolidar o fluxo funcional em [PCH-001](../PCH-001.md), detalhar os critérios
 - [OPEN-013](OPEN-013.md)
 - [OPEN-020](OPEN-020.md)
 - [OPEN-021](OPEN-021.md)
+
+## Pré-condição de revisão independente
+
+A sequência funcional de registro, liberação e execução descrita acima pressupõe que as funções candidatas e a composição tenham atendido à revisão independente de [OBJ-004](../objectives/OBJ-004.md), além das demais validações de [OPEN-020](OPEN-020.md). O resultado reprovado, inconclusivo ou sem tentativas disponíveis não é liberado. A execução rastreável integra [OBJ-005](../objectives/OBJ-005.md).

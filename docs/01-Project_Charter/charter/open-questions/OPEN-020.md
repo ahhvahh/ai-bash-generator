@@ -71,3 +71,9 @@ Definir e aprovar as verificações obrigatórias e os respectivos critérios de
 - [OPEN-013](OPEN-013.md)
 - [OPEN-021](OPEN-021.md)
 - [OPEN-022](OPEN-022.md)
+
+## Revisão funcional independente antes da liberação
+
+**DOCUMENTED:** uma LLM revisora, distinta da responsabilidade de geração, deverá confrontar a função candidata com a tarefa e a solicitação original, emitindo parecer fundamentado. A reprovação corrigível poderá originar nova geração dentro dos limites de [OPEN-014](OPEN-014.md); a reprovação não corrigível, a inconclusão ou o esgotamento do limite impedem liberação e exigem falha registrada. A composição final também deverá ser avaliada quanto à intenção original, conforme [OBJ-004](../objectives/OBJ-004.md).
+
+A revisão semântica **não prova segurança** e não substitui validação sintática, regras da aplicação, permissões efetivas do SO ou outras verificações obrigatórias. O conjunto completo e as evidências dessas verificações continuam pendentes neste documento.

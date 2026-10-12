@@ -61,3 +61,7 @@ O sucesso da geração possui meta verificável e a regra funcional de comparaç
 2. Definir os casos de teste e a meta de acerto da reutilização para [OBJ-002](../objectives/OBJ-002.md), incluindo casos com correspondência exata, sem correspondência e com diferenças nos contratos ou no propósito, sem presumir que os 90% de geração também se aplicam à reutilização.
 3. Registrar as evidências das avaliações quando os testes forem realizados; não presumir execução ou aprovação de testes nesta decisão documental.
 4. Reavaliar o gate Charter → Scope após tratar as demais pendências. A identidade operacional local, sem perfis de autorização próprios, foi estabelecida em [PCH-001](../PCH-001.md).
+
+## Critérios adicionais pendentes para os novos objetivos
+
+Os objetivos [OBJ-003](../objectives/OBJ-003.md), [OBJ-004](../objectives/OBJ-004.md) e [OBJ-005](../objectives/OBJ-005.md) exigem evidências verificáveis de decomposição sem perda de intenção, revisão independente e correção limitada, e execução com resultados rastreáveis. **PENDING — definir e aprovar casos de teste e metas específicas**, sem presumir aplicação automática da meta de 90% de [OBJ-001](../objectives/OBJ-001.md). Nenhuma execução de testes foi comprovada.

@@ -36,3 +36,9 @@ Definir exigências mensuráveis de custo e duração quando relevantes; elabora
 - [ASM-001](../assumptions/ASM-001.md)
 - [CON-002](../constraints/CON-002.md)
 - [OPEN-001](OPEN-001.md)
+
+## Decisão funcional sobre tentativas e encerramento
+
+**DOCUMENTED:** a geração poderá receber feedback da revisão independente e produzir novas candidatas somente dentro de um limite configurável de tentativas e consumo. Cada candidata deve passar novamente pelas verificações aplicáveis. Esgotado o limite sem aprovação, o processamento termina com falha e motivo registrado, sem liberar o script, conforme [OBJ-004](../objectives/OBJ-004.md) e [OPEN-020](OPEN-020.md).
+
+**PENDING — valores máximos de tentativas, duração e custo**, a serem definidos com critérios mensuráveis e detalhamento técnico posterior.

@@ -11,10 +11,13 @@ Registrar o problema, o propósito, os resultados, as exclusões e os limites qu
 ## Índice
 
 - [Charter](charter/README.md)
-- [PCH-001 — Geração local e segura de scripts Bash](charter/PCH-001.md)
+- [PCH-001 — Geração e execução de scripts Bash com permissões controladas](charter/PCH-001.md)
 - [OBJ-001 — Gerar scripts Bash a partir de linguagem natural](charter/objectives/OBJ-001.md)
 - [OBJ-002 — Reutilizar capacidades existentes](charter/objectives/OBJ-002.md)
-- [NOBJ-001 — Não executar scripts automaticamente](charter/non-objectives/NOBJ-001.md)
+- [OBJ-003 — Decompor solicitações em tarefas verificáveis](charter/objectives/OBJ-003.md)
+- [OBJ-004 — Revisar independentemente funções e corrigir divergências](charter/objectives/OBJ-004.md)
+- [OBJ-005 — Executar artefatos aprovados e entregar resultados rastreáveis](charter/objectives/OBJ-005.md)
+- [NOBJ-001 — Não executar além das permissões do serviço](charter/non-objectives/NOBJ-001.md)
 - [CON-001 — Operação offline e APIs externas opcionais](charter/constraints/CON-001.md)
 - [CON-002 — Recursos mínimos de execução](charter/constraints/CON-002.md)
 - [ASM-001 — Premissa de desempenho na configuração de referência](charter/assumptions/ASM-001.md)
