@@ -4,34 +4,40 @@
 
 ## Pergunta
 
-A execução automática deve ocorrer sempre pela identidade dedicada do serviço e exclusivamente com as permissões que o administrador lhe atribuir?
+Que garantias confirmam o uso exclusivo da conta dedicada do serviço e o respeito às permissões que o administrador lhe atribuiu?
 
 ## Contexto para refinamento
 
-A baseline atual estabelece execução automática com a identidade dedicada do serviço e somente com permissões atribuídas pelo administrador do sistema operacional. Outra alternativa considerada anteriormente associava a autorização ao usuário ou processo que executa cada artefato. É necessária decisão explícita sobre a fronteira de identidade e autoridade; nenhuma dessas alternativas deve ser inferida a partir de documentos de implementação.
+A identidade executora foi definida pelo responsável pelo projeto: scripts liberados são executados sempre pelo usuário dedicado do serviço, e não pela identidade do solicitante. A conta e seus grupos de acesso são administrados pelo responsável pelo sistema operacional.
 
-O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+A liberação por regras da aplicação não substitui a verificação das permissões efetivas do SO, conforme [NOBJ-001](../non-objectives/NOBJ-001.md) e [OPEN-020](OPEN-020.md).
 
 ## Pontos para deliberação
 
-- A conta dedicada deve ser sempre a única identidade executora?
-- Como são verificadas as permissões e os grupos definidos pelo administrador?
-- Que comportamento é obrigatório quando faltar autorização para acessar um recurso?
+**Decisão funcional aprovada — 11/10/2026:** o serviço executor deverá sempre usar uma conta de usuário com acessos controlados pelo administrador do SO, sem elevar seus próprios privilégios ou assumir os privilégios de quem fez a requisição.
+
+**Permanecem em refinamento:**
+- Como comprovar, antes da execução, que as permissões e os grupos efetivos são compatíveis com a operação?
+- Qual falha deverá ser devolvida quando o sistema operacional negar a operação?
+- Como revalidar condições de acesso que tenham mudado após a liberação do script?
+
+A identificação técnica da conta, verificação de privilégios e tratamento de códigos de erro pertencem às etapas posteriores.
 
 ## Impacto
 
-Define a fronteira de segurança, responsabilidade operacional e controles exigidos pelo produto.
+Consolida a fronteira de autoridade: só há execução quando as regras da aplicação e as permissões do usuário dedicado a autorizarem, sem concessão autônoma de privilégios.
 
 ## Bloqueadora
 
-Sim — divergência material entre referências históricas e Charter vigente.
+**Sim, parcialmente resolvida.** A identidade executora está aprovada, mas a comprovação das permissões efetivas e o comportamento diante de alterações continuam pendentes em [OPEN-020](OPEN-020.md).
 
 ## Próxima ação
 
-Confirmar o ator executor e harmonizar PCH-001/NOBJ-001 com os requisitos futuros, registrando a decisão somente no Charter.
+Manter [PCH-001](../PCH-001.md) e [NOBJ-001](../non-objectives/NOBJ-001.md) alinhados à identidade aprovada e definir com [OPEN-020](OPEN-020.md) as garantias de negação e rastreabilidade.
 
 ## Relações internas de Charter
 
 - [PCH-001](../PCH-001.md)
 - [NOBJ-001](../non-objectives/NOBJ-001.md)
+- [OPEN-020](OPEN-020.md)
 - [OPEN-022](OPEN-022.md)

@@ -4,31 +4,38 @@
 
 ## Pergunta
 
-Em que momento o artefato gerado é executado automaticamente, e quais condições devem obrigatoriamente preceder essa execução?
+Após o registro de um script gerado, em que condições ocorre a liberação automática e como o resultado da execução chega à aplicação solicitante?
 
 ## Contexto para refinamento
 
-A intenção vigente do Charter inclui executar automaticamente scripts gerados no próprio sistema operacional por uma conta de serviço dedicada, limitada às permissões configuradas pelo administrador. Em interpretações anteriores, geração e execução eram atividades separadas, sem acionamento automático. O projeto precisa confirmar a sequência funcional, o instante de execução e as validações obrigatórias antes de efetivar o comportamento atual.
+A finalidade aprovada inclui geração, validação, registro, execução automática e entrega dos resultados. O serviço executor utiliza uma conta dedicada com permissões controladas, conforme [NOBJ-001](../non-objectives/NOBJ-001.md).
 
-O conteúdo registra alternativas para reavaliação, não uma decisão técnica aprovada nem comprovação de implementação.
+A aplicação registra o script produzido para execução posterior. As saídas da execução são registradas separadamente para consulta e devolução ao cliente final. O desenho físico das tabelas e das interfaces não é definido no Charter.
 
 ## Pontos para deliberação
 
-- Qual evento autoriza ou dispara a execução depois da geração?
-- Quais condições de validação, disponibilidade e segurança são pré-requisitos obrigatórios?
-- Como o solicitante recebe o resultado real da execução e como são tratadas falhas e cancelamentos?
+**Decisões funcionais aprovadas — 11/10/2026:**
+
+1. Após a geração, o script Bash é registrado para posterior execução por um serviço.
+2. Sua **liberação é automática somente após a aprovação de todas as validações obrigatórias**, conforme [OPEN-020](OPEN-020.md); não é exigida aprovação humana individual para um script validado.
+3. Uma vez registrado e liberado, o serviço inicia automaticamente a execução com a identidade dedicada e as permissões efetivas definidas pelo administrador do SO.
+4. A execução produz registros dos resultados de `stdout` e `stderr` até sua finalização, em registro distinto daquele utilizado para o script.
+5. A aplicação que iniciou o processamento recupera os resultados registrados e os devolve ao cliente final.
+6. Se qualquer validação obrigatória for reprovada ou inconclusiva, o script **não é liberado**; a falha e seu motivo ficam registrados e são devolvidos ao solicitante.
+
+**Permanecem em refinamento:** condições concretas das verificações de segurança e liberação ([OPEN-020](OPEN-020.md)); comportamento de timeout, cancelamento e falhas parciais ([OPEN-021](OPEN-021.md)); detalhamento de contratos, estados, tabelas e transporte nas etapas seguintes.
 
 ## Impacto
 
-Inconsistência sobre o acionamento automático entre documentos legados e Charter vigente; impacto em segurança, fluxo e teste.
+Confirma a execução automática condicionada à validação, a separação funcional entre registro do script e resultados e o retorno completo de `stdout` e `stderr` ao solicitante. O detalhamento técnico permanece posterior ao Charter.
 
 ## Bloqueadora
 
-Sim — contradição funcional essencial e gate bloqueado.
+**Sim, parcialmente resolvida.** O acionamento automático e o retorno dos resultados estão aprovados. A liberação segura depende dos critérios ainda pendentes em [OPEN-020](OPEN-020.md); cancelamento e tratamento de falhas dependem de [OPEN-021](OPEN-021.md).
 
 ## Próxima ação
 
-Confirmar evento de execução, controles prévios, identidade executora e resposta em caso de erro; atualizar a decisão canônica de Charter por aprovação.
+Consolidar o fluxo funcional em [PCH-001](../PCH-001.md), detalhar os critérios mínimos de liberação em [OPEN-020](OPEN-020.md) e tratar as garantias de interrupção em [OPEN-021](OPEN-021.md). Preservar o gate bloqueado até as pendências pertinentes serem resolvidas.
 
 ## Relações internas de Charter
 
@@ -37,3 +44,4 @@ Confirmar evento de execução, controles prévios, identidade executora e respo
 - [NOBJ-001](../non-objectives/NOBJ-001.md)
 - [OPEN-013](OPEN-013.md)
 - [OPEN-020](OPEN-020.md)
+- [OPEN-021](OPEN-021.md)
