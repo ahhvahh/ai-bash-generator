@@ -17,6 +17,7 @@ Registrar o problema, o propósito, os resultados, as exclusões e os limites qu
 - [OBJ-003 — Decompor solicitações em tarefas verificáveis](charter/objectives/OBJ-003.md)
 - [OBJ-004 — Revisar independentemente funções e corrigir divergências](charter/objectives/OBJ-004.md)
 - [OBJ-005 — Executar artefatos aprovados e entregar resultados rastreáveis](charter/objectives/OBJ-005.md)
+- [OBJ-006 — Compor funções reutilizáveis em um fluxo Bash verificável](charter/objectives/OBJ-006.md)
 - [NOBJ-001 — Não executar além das permissões do serviço](charter/non-objectives/NOBJ-001.md)
 - [CON-001 — Operação offline e APIs externas opcionais](charter/constraints/CON-001.md)
 - [CON-002 — Recursos mínimos de execução](charter/constraints/CON-002.md)

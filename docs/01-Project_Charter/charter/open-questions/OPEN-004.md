@@ -35,3 +35,9 @@ Confirmar critérios de compatibilidade, resultados e tratamento de falhas em al
 - [PCH-001](../PCH-001.md)
 - [OBJ-001](../objectives/OBJ-001.md)
 - [OBJ-002](../objectives/OBJ-002.md)
+
+## Resultado funcional esperado do intercâmbio
+
+**DOCUMENTED:** composição de tarefas é parte da finalidade do produto. Cada função precisa declarar de forma verificável a estrutura lógica de entrada e de saída, permitindo que os resultados de uma etapa satisfaçam as entradas de outra, inclusive estruturas, listas e agregações. A composição deve preservar tipos, dependências e identificação de falhas, conforme [OBJ-006](../objectives/OBJ-006.md). A busca de [OBJ-002](../objectives/OBJ-002.md) avalia contratos, não valores concretos nem amostras do SO. 
+
+**PENDING —** como serializar coleções, multiplexar resultados e propagar erros entre funções; essas são especificações técnicas de Scope/Implementation, sem fixação neste Charter.

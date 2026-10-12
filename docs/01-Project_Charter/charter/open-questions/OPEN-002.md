@@ -55,3 +55,9 @@ Estes textos demonstram intenção e responsabilidades. Não são prompts execut
 > Compare a solicitação original, a tarefa, a função candidata e seus critérios de aceite. Identifique divergências de finalidade, entradas, saídas, efeitos colaterais e restrições. Emita parecer fundamentado: aprovado, reprovado corrigível, reprovado não corrigível ou inconclusivo. Seu parecer não autoriza execução.
 
 A sintaxe, o contexto enviado e os critérios de qualidade dos prompts serão detalhados posteriormente.
+
+## Síntese aprovada — composição funcional por tarefas
+
+**DOCUMENTED:** a entrada pode estar em qualquer idioma. A LLM planejadora de [OBJ-003](../objectives/OBJ-003.md) normaliza o pedido, representa tarefas pequenas e comunica seus contratos abstratos de entrada e saída e a proposta de processamento. A busca de [OBJ-002](../objectives/OBJ-002.md) considera somente estrutura lógica e propósito, **sem dados reais e sem executar operações**; em ausência de correspondência exata, [OBJ-001](../objectives/OBJ-001.md) gera a função candidata, que passa pela revisão independente de [OBJ-004](../objectives/OBJ-004.md).
+
+A saída da orquestração é um conjunto de funções identificadas e versionadas, com dependências e relações de entrada/saída suficientes para a aplicação montar um Bash, conforme [OBJ-006](../objectives/OBJ-006.md). O conjunto final validado segue à execução automática autorizada de [OBJ-005](../objectives/OBJ-005.md). A sequência funcional está ilustrada em [PCH-001](../PCH-001.md); detalhes de algoritmos, interfaces e serialização ficam para Scope/Implementation.

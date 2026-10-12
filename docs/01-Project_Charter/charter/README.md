@@ -14,6 +14,7 @@ O documento [PCH-001](PCH-001.md) contém o propósito, problema, stakeholders e
 - [OBJ-003 — Decompor solicitações em tarefas verificáveis](objectives/OBJ-003.md)
 - [OBJ-004 — Revisar independentemente funções e corrigir divergências](objectives/OBJ-004.md)
 - [OBJ-005 — Executar artefatos aprovados e entregar resultados rastreáveis](objectives/OBJ-005.md)
+- [OBJ-006 — Compor funções reutilizáveis em um fluxo Bash verificável](objectives/OBJ-006.md)
 - [NOBJ-001 — Não executar além das permissões do serviço](non-objectives/NOBJ-001.md)
 - [CON-001 — Offline e processamento externo opcional](constraints/CON-001.md)
 - [CON-002 — Recursos mínimos](constraints/CON-002.md)

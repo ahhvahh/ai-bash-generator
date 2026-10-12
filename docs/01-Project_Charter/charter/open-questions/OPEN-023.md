@@ -36,3 +36,9 @@ Definir política de aprovação em alto nível e se a ativação pode ser autom
 - [OBJ-002](../objectives/OBJ-002.md)
 - [NOBJ-001](../non-objectives/NOBJ-001.md)
 - [OPEN-005](OPEN-005.md)
+
+## Relação com descoberta e composição — sem promoção de elegibilidade
+
+**DOCUMENTED:** a descoberta por [OBJ-002](../objectives/OBJ-002.md) e a composição de [OBJ-006](../objectives/OBJ-006.md) recuperam apenas funções **elegíveis e com versão ativa selecionada**; novas funções geradas podem ser candidatas, mas sua validação para a requisição corrente não implica automaticamente ativação para reutilizações futuras. A pesquisa no catálogo não executa funções nem altera seus privilégios. 
+
+**PENDING —** política de ativação, suspensão, substituição, responsáveis e evidências de segurança, ainda bloqueadora para o gate; a atualização atual não aprova publicação ou ativação automática de novas capacidades.

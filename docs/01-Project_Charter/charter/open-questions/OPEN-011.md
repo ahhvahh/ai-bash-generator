@@ -35,3 +35,9 @@ Decidir a abrangência da interoperabilidade esperada e vincular o requisito a O
 - [PCH-001](../PCH-001.md)
 - [OBJ-002](../objectives/OBJ-002.md)
 - [NOBJ-001](../non-objectives/NOBJ-001.md)
+
+## Reuso de funções e plano de montagem
+
+**DOCUMENTED:** o produto precisa compor capacidades pequenas em ordem lógica, mesmo quando recuperadas de fontes ou implementações distintas, desde que satisfaçam contratos abstratos exatamente compatíveis e regras de elegibilidade. O resultado é um conjunto de funções com versões fixas, entrada, saída e dependências explícitas, que permite à aplicação montar um script Bash verificável conforme [OBJ-006](../objectives/OBJ-006.md). A pesquisa no catálogo não executa a capacidade. 
+
+**PENDING —** mecanismos de adaptação e orquestração concretos, tratamento técnico de dados intermediários, ordenação e paralelismo; não adotar tecnologia específica no Charter.
