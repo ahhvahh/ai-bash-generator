@@ -1,0 +1,86 @@
+# OBJ-004 — Revisar independentemente funções e corrigir divergências
+
+![Tipo: OBJ](../../assets/documentation-style/badges/badge-type-obj.svg) ![Status: refinement](../../assets/documentation-style/badges/badge-status-refinement.svg) ![Versão: v1](../../assets/documentation-style/badges/badge-version-v1.svg)
+
+**Evidência:** `DOCUMENTED` — decisão aprovada pelo responsável pelo projeto; implementação não verificada.
+
+## Motivação
+
+Reduzir divergências entre a intenção do usuário, a tarefa planejada e a função Bash candidata, sem confundir avaliação por LLM com garantia de segurança.
+
+## Resultado esperado
+
+Uma LLM revisora com responsabilidade distinta da geração compara a solicitação original, a tarefa e a função candidata, inclusive as funções selecionadas para reutilização quando participarem da solução. A revisão fornece parecer fundamentado de aprovação, reprovação corrigível, reprovação não corrigível ou avaliação inconclusiva. Divergências corrigíveis podem retornar à geração de uma nova candidata, com feedback, respeitando limites configuráveis de tentativas e recursos.
+
+Quando os limites se esgotarem ou a avaliação continuar inconclusiva, a função não será liberada e o solicitante receberá a falha registrada. A composição final também deve preservar a intenção original.
+
+## Critérios verificáveis
+
+- Cada candidata submetida à revisão recebe um parecer rastreável relacionado à tarefa e ao pedido original.
+- Reprovações corrigíveis apresentam razões utilizáveis em nova tentativa de geração.
+- Cada nova candidata passa novamente pelas verificações necessárias; aprovação anterior não é transferida automaticamente.
+- Tentativas são limitadas e o esgotamento resulta em falha registrada, sem execução.
+- Reprovação não corrigível ou resultado inconclusivo impede a liberação.
+- A revisão da composição identifica divergências não detectáveis pela análise isolada das funções.
+
+## Limites
+
+A avaliação por LLM não comprova segurança nem substitui sintaxe, políticas da aplicação e permissões efetivas do SO, conforme [OPEN-020](../open-questions/OPEN-020-garantias-de-validacao-antes-de-gerar-e-executar.md). Quantidade de tentativas, modelos, prompts operacionais e algoritmos serão detalhados posteriormente; ver [OPEN-014](../open-questions/OPEN-014-orcamento-de-processamento-e-recuperacao.md).
+
+## Relações internas de Charter
+
+- [PCH-001](../project-context/PCH-001-geracao-e-execucao-de-scripts-bash-com-permissoes-controladas.md)
+- [OBJ-001](OBJ-001-gerar-scripts-bash-a-partir-de-linguagem-natural.md)
+- [OBJ-003](OBJ-003-decompor-solicitacoes-em-tarefas-verificaveis.md)
+- [OBJ-005](OBJ-005-executar-artefatos-aprovados-e-entregar-resultados-rastreaveis.md)
+- [OPEN-001](../open-questions/OPEN-001-criterios-mensuraveis-de-sucesso.md)
+- [OPEN-002](../open-questions/OPEN-002-orquestracao-da-geracao-e-composicao-de-resultados.md)
+- [OPEN-014](../open-questions/OPEN-014-orcamento-de-processamento-e-recuperacao.md)
+- [OPEN-020](../open-questions/OPEN-020-garantias-de-validacao-antes-de-gerar-e-executar.md)
+
+## Entrada e saída lógicas da revisão
+
+**Entrada:** solicitação original, uma tarefa planejada com critérios de aceite e a função candidata; quando necessário, considerar funções reaproveitadas e a composição final. **Saída:** parecer fundamentado associado à tarefa, com `approve` (aprovado), `reject_fix` (reprovação corrigível), `reject` (reprovação sem correção segura) ou `unknown` (avaliação inconclusiva). Apenas `reject_fix` pode pedir outra candidata, respeitando os limites de [OPEN-014](../open-questions/OPEN-014-orcamento-de-processamento-e-recuperacao.md). Demais pareceres não autorizam nova tentativa automática nesse ciclo.
+
+A aprovação semântica da LLM não comprova segurança nem libera execução por si só; verificações adicionais permanecem em [OPEN-020](../open-questions/OPEN-020-garantias-de-validacao-antes-de-gerar-e-executar.md).
+
+## Exemplo ilustrativo de parecer JSON
+
+```json
+{
+  "task": "T1",
+  "status": "reject_fix",
+  "issues": [
+    "Não valida se o diretório existe",
+    "Não verifica corretamente o limite de tamanho"
+  ]
+}
+```
+
+`task` identifica a tarefa analisada, `status` indica o resultado e `issues` fundamenta a reprovação. A codificação é candidata para testes, não schema aprovado.
+
+## Prompt experimental da LLM revisora — não normativo
+
+```text
+Você revisa funções Bash sem executar código.
+Compare solicitação original, tarefa e função candidata.
+Avalie finalidade, entradas, saídas, dependências, restrições, efeitos colaterais e critérios de aceite.
+Retorne somente JSON no formato ilustrativo:
+{"task":"T1","status":"approve","issues":[]}
+Valores possíveis de status: approve, reject_fix, reject, unknown.
+Use approve apenas se os critérios avaliáveis forem atendidos.
+Em reject_fix liste falhas objetivas corrigíveis; em reject, falhas sem correção segura.
+Se não conseguir determinar conformidade, use unknown. Nunca presuma aprovação.
+Seu parecer não libera execução.
+Solicitação original: [inserir solicitação]
+Tarefa JSON: [inserir tarefa]
+Função Bash: [inserir função candidata]
+```
+
+**PENDING —** verificar confiabilidade do parecer com modelos de capacidade limitada; a revisão não substitui controles determinísticos.
+
+## Revisão independente de função e de composição
+
+**DOCUMENTED — refinamento funcional aprovado:** verificar se cada função gerada ou recuperada preserva o propósito da tarefa, a estrutura de entrada, a estrutura de saída e as restrições declaradas. A revisão deve também conferir se a composição resultante de [OBJ-006](OBJ-006-compor-funcoes-reutilizaveis-em-um-fluxo-bash-verificavel.md) atende ao pedido original, inclusive quando há dependências e múltiplas funções. A revisão por LLM não consulta dados reais do sistema operacional como condição para avaliar a assinatura funcional e não executa a função; reprovação corrigível volta apenas à geração de tarefa ausente, com limites registrados em [OPEN-014](../open-questions/OPEN-014-orcamento-de-processamento-e-recuperacao.md). 
+
+Parecer positivo não elimina validações determinísticas nem autorização da aplicação e do SO em [OPEN-020](../open-questions/OPEN-020-garantias-de-validacao-antes-de-gerar-e-executar.md).

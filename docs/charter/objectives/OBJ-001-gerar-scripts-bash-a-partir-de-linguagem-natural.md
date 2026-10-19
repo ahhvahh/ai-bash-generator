@@ -1,0 +1,98 @@
+# OBJ-001 — Gerar scripts Bash a partir de linguagem natural
+
+![Tipo: OBJ](../../assets/documentation-style/badges/badge-type-obj.svg) ![Status: refinement](../../assets/documentation-style/badges/badge-status-refinement.svg) ![Versão: v1](../../assets/documentation-style/badges/badge-version-v1.svg)
+
+**Evidência:** `DOCUMENTED` no propósito de [PCH-001](../project-context/PCH-001-geracao-e-execucao-de-scripts-bash-com-permissoes-controladas.md) e na exclusão de elevação de privilégios em [NOBJ-001](../non-objectives/NOBJ-001-nao-executar-alem-das-permissoes-concedidas-ao-usuario-do-servico.md). O comportamento de execução permanece sujeito à revisão de [OPEN-022](../open-questions/OPEN-022-geracao-versus-execucao-automatica-do-artefato.md).
+
+## Motivação
+
+Reduzir o esforço de transformar pedidos de operações Linux em scripts Bash verificáveis e passíveis de revisão.
+
+## Resultado esperado
+
+O solicitante recebe um artefato Bash que corresponda à finalidade expressa em linguagem natural. O projeto prevê sua execução automática no SO por um serviço com usuário dedicado, cujo alcance é definido pelas permissões e pelos grupos de acesso configurados pelo administrador, conforme [PCH-001](../project-context/PCH-001-geracao-e-execucao-de-scripts-bash-com-permissoes-controladas.md) e [NOBJ-001](../non-objectives/NOBJ-001-nao-executar-alem-das-permissoes-concedidas-ao-usuario-do-servico.md).
+
+## Critério verificável
+
+- O objetivo será considerado aprovado quando **pelo menos 18 das 20 solicitações de teste** (90%) produzirem scripts com **sintaxe Bash válida e aderência à finalidade solicitada**, simultaneamente.
+- Cada caso deve ter a solicitação e o resultado esperado definidos previamente, com registro da avaliação dos dois critérios e do resultado final.
+- A avaliação de geração prevista neste critério não executa o artefato produzido e não exclui a execução automática prevista no produto. A verificação estática da finalidade não comprova integralmente seu comportamento durante a execução.
+- **PENDING — definição e aprovação dos 20 casos e respectivos resultados esperados**, conforme [OPEN-001](../open-questions/OPEN-001-criterios-mensuraveis-de-sucesso.md).
+
+## Limites
+
+O objetivo não prescreve motor de inferência, protocolo ou linguagem da aplicação.
+
+## Relações com Scope
+
+**PENDING — contrato funcional de solicitação, geração, entrega e execução sob as permissões da conta de serviço**.
+
+## Relações com os objetivos complementares
+
+A função gerada deve corresponder à tarefa derivada da solicitação original em [OBJ-003](OBJ-003-decompor-solicitacoes-em-tarefas-verificaveis.md) e passar pela revisão independente de [OBJ-004](OBJ-004-revisar-independentemente-funcoes-e-corrigir-divergencias.md). A execução controlada e a entrega são resultados distintos definidos em [OBJ-005](OBJ-005-executar-artefatos-aprovados-e-entregar-resultados-rastreaveis.md). A meta aprovada de 18/20 solicitações permanece inalterada.
+
+## Entrada e saída lógicas da função geradora
+
+**Entrada:** uma única tarefa planejada por [OBJ-003](OBJ-003-decompor-solicitacoes-em-tarefas-verificaveis.md), contendo propósito, parâmetros com tipos lógicos, saída esperada, dependências pertinentes, restrições e critérios de aceite. Antes de gerar, verificar capacidade elegível com igualdade exata conforme [OBJ-002](OBJ-002-reutilizar-capacidades-existentes.md).
+
+**Saída:** uma função Bash candidata, com parâmetros compatíveis com a tarefa, resultado funcional compatível com sua saída lógica e erros distinguíveis do resultado. O modelo não executa código. A função segue à revisão de [OBJ-004](OBJ-004-revisar-independentemente-funcoes-e-corrigir-divergencias.md) e permanece sujeita à segurança de [OPEN-020](../open-questions/OPEN-020-garantias-de-validacao-antes-de-gerar-e-executar.md). A escolha de convenções físicas de argumentos, retorno e transporte cabe a Scope/Implementation.
+
+## Exemplo ilustrativo de entrada para geração (contrato abstrato)
+
+```json
+{
+  "id": "T1",
+  "input": {
+    "object": "filesystem.directory"
+  },
+  "output": {
+    "object": "filesystem.entry[]"
+  },
+  "process": "Extrair metadados dos itens do diretório",
+  "depends_on": []
+}
+```
+
+Somente objetos e estruturas lógicas participam da busca ou geração da função candidata. Valores concretos de parâmetros são definidos exclusivamente para a execução posterior. Esta estrutura é **não normativa**.
+
+## Prompt experimental da LLM geradora — não normativo
+
+```text
+Você cria uma única função Bash candidata para um contrato abstrato.
+Entrada: JSON com input (objeto e tipos), output (objeto e tipos), process (transformação) e dependências.
+Não solicite, invente ou examine valores concretos de parâmetros.
+Implemente somente o processamento proposto, sem efeitos colaterais adicionais.
+Preserve o contrato de entrada e saída; não execute código, não use sudo e não eleve privilégios.
+Responda apenas com a função Bash, sem Markdown ou explicações.
+Tarefa:
+{"id":"T1","input":{"object":"filesystem.directory"},"output":{"object":"filesystem.entry[]"},"process":"Extrair metadados dos itens do diretório","depends_on":[]}
+```
+
+Este prompt é apenas uma hipótese de teste; o contrato físico de entrada/saída será definido após o gate de Scope.
+
+Este teste não autoriza execução do código. A saída física de dados compostos ainda exige decisão em Scope/Implementation.
+
+## Geração a partir de contrato abstrato
+
+**DOCUMENTED — refinamento funcional aprovado:** a LLM geradora só deve atuar quando a pesquisa de [OBJ-002](OBJ-002-reutilizar-capacidades-existentes.md) não encontrar uma função elegível exatamente compatível. A geradora recebe uma tarefa pequena com **estrutura lógica de entrada, estrutura lógica de saída e proposta de processamento**, sem dados reais da execução. Cada geração produz uma função candidata para uma tarefa; o código deve preservar os contratos, os efeitos declarados e os critérios de aceite. Sua aprovação depende da revisão independente de [OBJ-004](OBJ-004-revisar-independentemente-funcoes-e-corrigir-divergencias.md), e a função é encaminhada para composição em [OBJ-006](OBJ-006-compor-funcoes-reutilizaveis-em-um-fluxo-bash-verificavel.md). A aplicação fornece valores e contexto de execução apenas na etapa apropriada, distinta da descoberta por contrato. 
+
+**Exemplo ilustrativo (não normativo) de tarefa sem valores concretos:**
+
+```json
+{
+  "id": "T1",
+  "input": {
+    "object": "filesystem.directory",
+    "fields": {
+      "entries": "filesystem.entry[]"
+    }
+  },
+  "output": {
+    "object": "filesystem.entry[]"
+  },
+  "process": "Extrair metadados dos itens do diretório",
+  "depends_on": []
+}
+```
+
+Exemplos de execução podem conter parâmetros concretos, mas **a busca de equivalência usa somente o contrato abstrato**. A versão do contrato físico permanece pendente de Scope.

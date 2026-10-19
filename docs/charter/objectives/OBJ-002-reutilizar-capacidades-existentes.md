@@ -1,0 +1,55 @@
+# OBJ-002 — Reutilizar capacidades existentes
+
+![Tipo: OBJ](../../assets/documentation-style/badges/badge-type-obj.svg) ![Status: refinement](../../assets/documentation-style/badges/badge-status-refinement.svg) ![Versão: v1](../../assets/documentation-style/badges/badge-version-v1.svg)
+
+**ID:** OBJ-002  
+**Evidência:** `DOCUMENTED` — decisões aprovadas pelo responsável pelo projeto em 11/10/2026, consolidadas neste documento. Implementação e resultados de testes não verificados nesta revisão.
+
+## Motivação
+
+Evitar a geração repetida de soluções já disponíveis para operações recorrentes, preservar comportamento conhecido e permitir a evolução das implementações sem perder seu histórico.
+
+## Resultado esperado
+
+Antes de produzir uma nova função para uma tarefa, o sistema procura uma capacidade elegível no catálogo cujo contrato lógico de entrada, propósito e contrato lógico de saída coincidam exatamente com os requisitos da tarefa.
+
+Uma capacidade elegível possui identidade habilitada e versão ativa disponível. Os contratos lógicos descrevem a estrutura, os tipos e a obrigatoriedade dos dados aceitos e produzidos; o propósito descreve a transformação que a função realiza.
+
+Havendo correspondência exata, o sistema reutiliza a capacidade existente e seleciona sua versão ativa mais recente. Essa versão permanece fixa durante toda a requisição. Quando não houver correspondência, a tarefa é encaminhada para geração de uma nova função.
+
+## Critérios verificáveis
+
+- Para cada tarefa, procurar uma capacidade elegível existente antes de gerar uma nova função.
+- Havendo igualdade exata de contrato lógico de entrada, propósito e contrato lógico de saída, reutilizar a capacidade encontrada.
+- Diferença em qualquer um dos três elementos impede reutilização; similaridade ou aproximação não substitui a igualdade exigida.
+- Sem correspondência exata, encaminhar a tarefa para geração de nova função. Esse resultado não conta como falha de reutilização.
+- A definição carregada deve pertencer à mesma versão selecionada na busca, sem nova resolução de versão durante a requisição.
+- Otimizações que preservem a identidade funcional geram novas versões imutáveis da mesma capacidade, sem sobrescrever versões anteriores.
+- Avaliar o acerto de reutilização considerando os casos em que existe capacidade elegível exatamente compatível.
+- Verificar separadamente que casos com entrada, propósito ou saída incompatíveis não são reutilizados indevidamente.
+
+## Limites
+
+A identidade funcional de uma capacidade é definida conjuntamente por seu contrato lógico de entrada, propósito e contrato lógico de saída. Melhorias de desempenho ou implementação que preservem esses três elementos não alteram essa identidade.
+
+A comparação trata dos contratos e do propósito, não da igualdade dos valores concretos de cada solicitação. A forma técnica de representar e comparar esses contratos será detalhada nas etapas posteriores.
+
+Este objetivo não determina tecnologias de catálogo, persistência, serialização, transporte ou implementação do algoritmo de busca. As decisões registradas não comprovam implementação.
+
+## Pendências
+
+**PENDING — definição e aprovação dos casos de teste e da meta de acerto da reutilização**, conforme [OPEN-001](../open-questions/OPEN-001-criterios-mensuraveis-de-sucesso.md).
+
+Nenhum percentual foi definido para este objetivo. A meta de geração não se aplica automaticamente à reutilização.
+
+## Relações com Scope
+
+**PENDING — definição canônica de capacidade, contratos de entrada e saída, compatibilidade e fluxo de reutilização**.
+
+O Scope deverá detalhar esses conceitos preservando os resultados, critérios e limites definidos neste documento.
+
+## Descoberta por assinatura funcional e devolução de capacidade
+
+**DOCUMENTED — refinamento funcional aprovado:** para cada tarefa normalizada em [OBJ-003](OBJ-003-decompor-solicitacoes-em-tarefas-verificaveis.md), pesquisar o catálogo persistente utilizando **somente a estrutura lógica de entrada, a estrutura lógica de saída e a finalidade/proposta de processamento**. O catálogo compara metadados dos contratos; não precisa receber valores concretos do solicitante, consultar registros de saída do sistema operacional ou executar as funções candidatas. 
+
+Uma correspondência somente é válida quando os três elementos são exatamente equivalentes e a capacidade é elegível. O retorno funcional da consulta deve permitir recuperar a **função existente completa, sua identidade, versão fixa e dependências**, para a composição prevista em [OBJ-006](OBJ-006-compor-funcoes-reutilizaveis-em-um-fluxo-bash-verificavel.md). Correspondências semânticas aproximadas não autorizam reutilização. A ausência de correspondência encaminha a tarefa à geração de [OBJ-001](OBJ-001-gerar-scripts-bash-a-partir-de-linguagem-natural.md). O mecanismo técnico do catálogo e da busca pertence a Scope/Implementation.

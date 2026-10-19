@@ -1,0 +1,144 @@
+# OBJ-003 — Decompor solicitações em tarefas verificáveis
+
+![Tipo: OBJ](../../assets/documentation-style/badges/badge-type-obj.svg) ![Status: refinement](../../assets/documentation-style/badges/badge-status-refinement.svg) ![Versão: v1](../../assets/documentation-style/badges/badge-version-v1.svg)
+
+**Evidência:** `DOCUMENTED` — decisão aprovada pelo responsável pelo projeto; implementação não verificada.
+
+## Motivação
+
+Evitar perda de intenção, ambiguidade e incompatibilidades ao transformar pedidos em funções reutilizáveis e combináveis.
+
+## Resultado esperado
+
+Uma etapa de planejamento com LLM interpreta a solicitação original e a decompõe em tarefas menores, quando necessário, mantendo a finalidade, as restrições e a relação entre as partes. Cada tarefa apresenta propósito, entradas, saídas, dependências e critérios de aceite compreensíveis e verificáveis. Informação insuficiente deve ser identificada, sem inventar parâmetros ou autorizações.
+
+## Critérios verificáveis
+
+- Cada requisito relevante do pedido original pode ser rastreado a uma ou mais tarefas ou a uma justificativa de impossibilidade.
+- Cada tarefa possui finalidade, entradas, saídas, dependências e critérios de aceite identificáveis.
+- Dependências e compatibilidade de resultados são verificáveis antes da composição.
+- Solicitações ambíguas ou incompletas não são convertidas silenciosamente em operações presumidas.
+- O plano permite verificar se o resultado composto preserva a finalidade original.
+
+## Limites
+
+Não determina modelo, formato de serialização, sintaxe física de tarefas nem prompt operacional. Essas escolhas pertencem a Scope/Implementation. Casos de teste e metas adicionais permanecem em [OPEN-001](../open-questions/OPEN-001-criterios-mensuraveis-de-sucesso.md).
+
+## Relações internas de Charter
+
+- [PCH-001](../project-context/PCH-001-geracao-e-execucao-de-scripts-bash-com-permissoes-controladas.md)
+- [OBJ-001](OBJ-001-gerar-scripts-bash-a-partir-de-linguagem-natural.md)
+- [OBJ-002](OBJ-002-reutilizar-capacidades-existentes.md)
+- [OBJ-004](OBJ-004-revisar-independentemente-funcoes-e-corrigir-divergencias.md)
+- [OPEN-002](../open-questions/OPEN-002-orquestracao-da-geracao-e-composicao-de-resultados.md)
+- [OPEN-003](../open-questions/OPEN-003-contratos-estruturados-na-interacao-com-inferencia.md)
+- [OPEN-019](../open-questions/OPEN-019-tratamento-de-solicitacoes-incompletas-ou-fora-do-escopo.md)
+
+## Entrada e saída lógicas do planejamento
+
+**Entrada:** solicitação original do usuário, suas restrições e o contexto fornecido. **Saída:** lista de tarefas pequenas e verificáveis ou solicitação de esclarecimento quando faltarem informações. Cada tarefa informa finalidade, entradas e respectivos tipos, saídas e seus tipos, dependências, regras e critérios de aceite. A saída de uma tarefa pode servir como entrada de outra.
+
+O objetivo exige descrição concisa e sem pressupor comandos específicos. Deve preservar a intenção original, sem inventar caminhos, dados ou permissões; tarefas e seus critérios devem permitir à LLM geradora operar com um contexto reduzido. A igualdade para reutilização segue [OBJ-002](OBJ-002-reutilizar-capacidades-existentes.md), comparando propósito e contratos lógicos e não valores concretos.
+
+Os formatos, campos e exemplos a seguir são apenas **candidatos ilustrativos de teste**, sem valor de schema normativo; a decisão técnica fica em [OPEN-003](../open-questions/OPEN-003-contratos-estruturados-na-interacao-com-inferencia.md) e Scope/Implementation.
+
+## Exemplo ilustrativo de JSON compacto — saída do planejador
+
+O candidato de saída abaixo descreve **objetos, estruturas, dependências e proposta de processamento**, não valores de parâmetros. As propriedades `status`, `tasks`, `id`, `input`, `output`, `process` e `depends_on` são apenas nomes para testes, sem schema normativo. As colunas e a ordenação representam o resultado esperado da transformação.
+
+```json
+{
+  "status": "ok",
+  "tasks": [
+    {
+      "id": "T1",
+      "input": {
+        "object": "filesystem.directory"
+      },
+      "output": {
+        "object": "filesystem.entry[]"
+      },
+      "process": "Extrair metadados dos itens do diretório",
+      "depends_on": []
+    },
+    {
+      "id": "T2",
+      "input": {
+        "object": "filesystem.entry[]"
+      },
+      "output": {
+        "object": "table",
+        "fields": [
+          "name",
+          "size_bytes",
+          "mtime"
+        ],
+        "sort": [
+          [
+            "size_bytes",
+            "desc"
+          ]
+        ]
+      },
+      "process": "Selecionar colunas e ordenar por tamanho decrescente",
+      "depends_on": [
+        "T1"
+      ]
+    }
+  ]
+}
+```
+
+Se o objetivo não puder ser entendido, um resultado ilustrativo é:
+
+```json
+{"status":"clarify","questions":["Qual é o resultado desejado?"],"tasks":[]}
+```
+
+O planejador não acessa pastas, processos, métricas ou qualquer outro dado real do ambiente.
+
+## Prompt experimental de planejamento — não normativo
+
+```text
+Você é um planejador de tarefas Linux.
+Aceite um pedido em linguagem natural em qualquer idioma.
+Decomponha em tarefas pequenas e independentes quando possível.
+Para cada tarefa, descreva apenas: id, input, output, process e depends_on.
+input e output devem definir objetos e tipos, sem valores ou parâmetros concretos.
+process deve definir a transformação funcional, sem impor comandos Bash.
+Não consulte dados reais, não execute funções e não gere Bash.
+Preserve a intenção e as dependências; não invente requisitos.
+Responda apenas com JSON contendo status=ok e tasks, ou status=clarify com questions.
+Pedido de teste: Liste os itens de uma pasta e apresente nome e tamanho em uma tabela ordenada do maior para o menor.
+```
+
+Prompt de experimentação; seu desempenho e formatos deverão ser validados em Scope.
+
+**PENDING —** realizar experimentos com modelos menores e medir completude, tokens, latência e fidelidade ao pedido.
+
+## Entrada multilíngue e normalização sem parâmetros de execução
+
+**DOCUMENTED — refinamento funcional aprovado:** receber necessidades expressas em linguagem natural, independentemente do idioma, e normalizar sua intenção em tarefas pequenas. Para cada tarefa determinar: estrutura abstrata de entrada, estrutura abstrata de saída, finalidade e proposta de processamento, restrições e dependências. A tarefa deve representar o **que precisa ser transformado**, não a instância de dados nem os valores a usar durante a execução. O processo deve preservar significado entre idiomas; quando não puder interpretar com segurança, deve solicitar esclarecimento, conforme [OPEN-019](../open-questions/OPEN-019-tratamento-de-solicitacoes-incompletas-ou-fora-do-escopo.md).
+
+A descrição normalizada serve à pesquisa exata de [OBJ-002](OBJ-002-reutilizar-capacidades-existentes.md), à geração pontual de [OBJ-001](OBJ-001-gerar-scripts-bash-a-partir-de-linguagem-natural.md) e à composição de [OBJ-006](OBJ-006-compor-funcoes-reutilizaveis-em-um-fluxo-bash-verificavel.md). Critério verificável: para pedidos equivalentes em idiomas diferentes, os contratos e a finalidade representados devem ser logicamente equivalentes, respeitando a regra de identidade funcional; nenhum dado de execução deve ser exigido para a pesquisa do catálogo. A cobertura multilíngue e suas metas exigem casos de avaliação em [OPEN-001](../open-questions/OPEN-001-criterios-mensuraveis-de-sucesso.md).
+
+**Exemplo de tarefa abstrata para consulta (ilustrativo, não normativo):**
+
+```json
+{
+  "id": "T1",
+  "input": {
+    "object": "filesystem.directory",
+    "fields": {
+      "entries": "filesystem.entry[]"
+    }
+  },
+  "output": {
+    "object": "filesystem.entry[]"
+  },
+  "process": "Extrair metadados dos itens do diretório",
+  "depends_on": []
+}
+```
+
+Exemplos de execução poderão conter valores, mas o normalizador para busca por algoritmo opera apenas sobre contratos abstratos. O formato físico permanece pendente.

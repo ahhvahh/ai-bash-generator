@@ -1,0 +1,29 @@
+# CON-002 — Recursos mínimos de execução
+
+![Tipo: CON](../../assets/documentation-style/badges/badge-type-con.svg) ![Status: refinement](../../assets/documentation-style/badges/badge-status-refinement.svg) ![Versão: v1](../../assets/documentation-style/badges/badge-version-v1.svg)
+
+**Evidência:** `DOCUMENTED` — decisão explícita do responsável pelo projeto.
+
+## Restrição
+
+A configuração mínima obrigatória inicial para o ambiente local de execução do projeto é **quatro CPUs e 8 GB de RAM**.
+
+## Origem
+
+Decisão atual do responsável pelo projeto, substituindo o alvo anterior de dois núcleos de CPU e 8 GB descrito no README principal.
+
+## Motivo
+
+Estabelecer uma configuração de referência inicial para o desenvolvimento e a avaliação do produto, preservando a possibilidade de processamento externo opcional.
+
+## Impacto
+
+A configuração local deverá respeitar esses recursos mínimos inicialmente. O uso eventual de APIs externas não elimina automaticamente esta obrigação. Detalhes de dimensionamento e distribuição da carga pertencem a Scope e Implementation.
+
+## Forma de verificação
+
+Confirmar que o ambiente adotado possui ao menos quatro CPUs e 8 GB de RAM; realizar ensaios de desempenho e recursos para examinar a premissa de suficiência em [ASM-001](ASM-001-desempenho-na-configuracao-minima.md).
+
+## Condição de revisão
+
+Qualquer redução ou ampliação desse requisito deverá ser deliberada e registrada, apoiada em evidências e nos resultados de validação do modo offline.
